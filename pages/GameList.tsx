@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { GameRecord } from '../types';
 import { initDB } from '../src/db/database';
 import { getAllGames } from '../src/db/gameRepository';
@@ -7,6 +8,14 @@ const GameList: React.FC = () => {
   const [allGames, setAllGames] = useState<GameRecord[]>([]);
   const [filteredGames, setFilteredGames] = useState<GameRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
+  const [hideUnplayed, setHideUnplayed] = useState(false);
+  
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState(1);
+  const gamesPerPage = 50;
+
+  // Sorting State
+  const [sortConfig, setSortConfig] = useState<{ key: keyof GameRecord | '', direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
 
   useEffect(() => {
     const load = async () => {
@@ -31,13 +40,67 @@ const GameList: React.FC = () => {
   useEffect(() => {
     if (selectedDate) {
         const filtered = allGames.filter(g => g.match_date === selectedDate);
-        // Sort by time
-        filtered.sort((a, b) => a.match_time.localeCompare(b.match_time));
         setFilteredGames(filtered);
     } else {
         setFilteredGames([]);
     }
+    setCurrentPage(1); // Reset page on date change
   }, [selectedDate, allGames]);
+
+  // Handle Sorting and Filtering
+  const processedGames = useMemo(() => {
+    let result = [...filteredGames];
+
+    if (hideUnplayed) {
+      result = result.filter(g => g.home_score !== null);
+    }
+
+    if (sortConfig.direction && sortConfig.key) {
+      result.sort((a, b) => {
+        const aVal = a[sortConfig.key] as any;
+        const bVal = b[sortConfig.key] as any;
+
+        // Push nulls/undefined to the end regardless of sort direction, or handle as 0
+        if (aVal === null || aVal === undefined) return 1;
+        if (bVal === null || bVal === undefined) return -1;
+
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    } else {
+       // Default sort by time
+       result.sort((a, b) => a.match_time.localeCompare(b.match_time));
+    }
+
+    return result;
+  }, [filteredGames, hideUnplayed, sortConfig]);
+
+  // Handle Pagination
+  const totalPages = Math.ceil(processedGames.length / gamesPerPage) || 1;
+  const paginatedGames = processedGames.slice(
+    (currentPage - 1) * gamesPerPage,
+    currentPage * gamesPerPage
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [hideUnplayed, sortConfig]);
+
+  const handleSort = (key: keyof GameRecord) => {
+    let direction: 'asc' | 'desc' | null = 'asc';
+    if (sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    } else if (sortConfig.key === key && sortConfig.direction === 'desc') {
+      direction = null;
+    }
+    setSortConfig({ key: direction ? key : '', direction });
+  };
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig.key !== key || !sortConfig.direction) return <ArrowUpDown className="w-3 h-3 ml-1 inline text-slate-500" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-3 h-3 ml-1 inline text-primary" /> : <ArrowDown className="w-3 h-3 ml-1 inline text-primary" />;
+  };
 
   // Helper to format numbers
   const fmt = (val: number | null | undefined) => val !== null && val !== undefined ? val.toFixed(2) : '-';
@@ -49,14 +112,27 @@ const GameList: React.FC = () => {
             <h2 className="text-2xl font-bold text-white tracking-tight">Lista de Jogos</h2>
             <p className="text-slate-400 text-sm mt-1">Visualização completa da base de dados por dia.</p>
         </div>
-        <div className="w-full md:w-auto">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Selecione a Data</label>
-            <input 
-                type="date" 
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-                className="bg-background-dark border border-border-subtle text-white text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5"
-            />
+        <div className="flex flex-col md:flex-row items-end gap-4 w-full md:w-auto">
+            <div className="flex items-center h-[42px] px-3 bg-background-dark border border-border-subtle rounded-lg w-full md:w-auto">
+                <label className="flex items-center cursor-pointer gap-2">
+                    <input 
+                        type="checkbox" 
+                        checked={hideUnplayed}
+                        onChange={(e) => setHideUnplayed(e.target.checked)}
+                        className="rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary"
+                    />
+                    <span className="text-sm text-slate-300 font-medium">Ocultar sem placar</span>
+                </label>
+            </div>
+            <div className="w-full md:w-auto">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Selecione a Data</label>
+                <input 
+                    type="date" 
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="bg-background-dark border border-border-subtle text-white text-sm rounded-lg focus:ring-primary focus:border-primary block w-full p-2.5"
+                />
+            </div>
         </div>
       </div>
 
@@ -73,17 +149,32 @@ const GameList: React.FC = () => {
                         <th className="p-4 border-b border-border-subtle text-center min-w-[80px]">HT</th>
                         
                         {/* Odds Section */}
-                        <th className="p-4 border-b border-border-subtle bg-primary/5 text-primary text-center border-l border-border-subtle">Home</th>
+                        <th 
+                           className="p-4 border-b border-border-subtle bg-primary/5 text-primary text-center border-l border-border-subtle cursor-pointer hover:bg-primary/10 transition-colors"
+                           onClick={() => handleSort('odd_home')}
+                        >
+                           Home {getSortIcon('odd_home')}
+                        </th>
                         <th className="p-4 border-b border-border-subtle bg-primary/5 text-primary text-center">Draw</th>
                         <th className="p-4 border-b border-border-subtle bg-primary/5 text-primary text-center border-r border-border-subtle">Away</th>
                         
                         <th className="p-4 border-b border-border-subtle text-center">Ov 0.5 HT</th>
                         <th className="p-4 border-b border-border-subtle text-center">Ov 0.5</th>
-                        <th className="p-4 border-b border-border-subtle text-center">Ov 1.5</th>
+                        <th 
+                           className="p-4 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors"
+                           onClick={() => handleSort('odd_over15')}
+                        >
+                           Ov 1.5 {getSortIcon('odd_over15')}
+                        </th>
                         <th className="p-4 border-b border-border-subtle text-center">Ov 2.5</th>
                         <th className="p-4 border-b border-border-subtle text-center">Un 1.5</th>
                         <th className="p-4 border-b border-border-subtle text-center">Un 2.5</th>
-                        <th className="p-4 border-b border-border-subtle text-center">Un 3.5</th>
+                        <th 
+                           className="p-4 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors"
+                           onClick={() => handleSort('odd_under35')}
+                        >
+                           Un 3.5 {getSortIcon('odd_under35')}
+                        </th>
                         <th className="p-4 border-b border-border-subtle text-center">Un 4.5</th>
                         <th className="p-4 border-b border-border-subtle text-center">BTTS Yes</th>
                         <th className="p-4 border-b border-border-subtle text-center">BTTS No</th>
@@ -114,12 +205,12 @@ const GameList: React.FC = () => {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle text-sm">
-                    {filteredGames.length === 0 ? (
+                    {paginatedGames.length === 0 ? (
                         <tr>
-                            <td colSpan={30} className="p-8 text-center text-slate-500">Nenhum jogo encontrado para esta data.</td>
+                            <td colSpan={30} className="p-8 text-center text-slate-500">Nenhum jogo encontrado para estes filtros.</td>
                         </tr>
                     ) : (
-                        filteredGames.map((game) => (
+                        paginatedGames.map((game) => (
                             <tr key={game.id} className="hover:bg-white/5 transition-colors">
                                 <td className="p-4 sticky left-0 bg-surface z-10 border-r border-border-subtle font-mono text-xs text-slate-300">
                                     {game.match_time}
@@ -181,9 +272,28 @@ const GameList: React.FC = () => {
                 </tbody>
             </table>
         </div>
-        <div className="p-4 border-t border-border-subtle bg-background-dark/50 text-xs text-slate-500 flex justify-between">
-            <span>Total de jogos: {filteredGames.length}</span>
-            <span>Mostrando todas as colunas disponíveis.</span>
+        <div className="p-4 border-t border-border-subtle bg-background-dark/50 flex flex-col sm:flex-row justify-between items-center gap-4">
+            <span className="text-xs text-slate-500">Total de jogos listados: {processedGames.length}</span>
+            
+            <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-1 rounded bg-surface border border-border-subtle text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+                >
+                    <ChevronLeft className="w-5 h-5" />
+                </button>
+                <span className="text-xs text-slate-400 font-medium px-2">
+                   Página {currentPage} de {totalPages}
+                </span>
+                <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-1 rounded bg-surface border border-border-subtle text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-slate-700 transition"
+                >
+                    <ChevronRight className="w-5 h-5" />
+                </button>
+            </div>
         </div>
       </div>
     </div>
