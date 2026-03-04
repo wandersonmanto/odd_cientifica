@@ -1,0 +1,469 @@
+/**
+ * server/index.js
+ * Servidor Express — API REST para o Odd Científica
+ * Porta padrão: 3001
+ */
+
+require('dotenv').config({ path: __dirname + '/.env' });
+const express = require('express');
+const cors = require('cors');
+const mysql = require('mysql2/promise');
+
+const app = express();
+const PORT = parseInt(process.env.PORT || '3001');
+
+// ─── Middleware ────────────────────────────────────────────────────────────────
+app.use(cors({ origin: '*' }));
+app.use(express.json({ limit: '50mb' }));
+
+// ─── MySQL Connection Pool ─────────────────────────────────────────────────────
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  port: parseInt(process.env.DB_PORT || '3306'),
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+  timezone: '+00:00',
+});
+
+// Teste de conexão ao iniciar
+pool.getConnection()
+  .then(conn => {
+    console.log(`✅ MySQL conectado em ${process.env.DB_HOST}:${process.env.DB_PORT} (banco: ${process.env.DB_NAME})`);
+    conn.release();
+  })
+  .catch(err => {
+    console.error('❌ Falha ao conectar no MySQL:', err.message);
+    console.error('   Verifique as credenciais em server/.env e se o MySQL está rodando.');
+    process.exit(1);
+  });
+
+// ─── Health Check ──────────────────────────────────────────────────────────────
+app.get('/api/health', async (req, res) => {
+  try {
+    await pool.execute('SELECT 1');
+    res.json({ status: 'ok', database: process.env.DB_NAME });
+  } catch (err) {
+    res.status(503).json({ status: 'error', message: err.message });
+  }
+});
+
+// ─── Contagem total de jogos ───────────────────────────────────────────────────
+app.get('/api/games/count', async (req, res) => {
+  try {
+    const [rows] = await pool.execute('SELECT COUNT(*) as count FROM games');
+    res.json({ count: rows[0].count });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Verificar se jogo existe ──────────────────────────────────────────────────
+app.get('/api/games/:id/exists', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT 1 FROM games WHERE id = ? LIMIT 1',
+      [req.params.id]
+    );
+    res.json({ exists: rows.length > 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Listar todos os jogos ─────────────────────────────────────────────────────
+app.get('/api/games', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM games ORDER BY match_date ASC, match_time ASC'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Inserir ou atualizar jogo (upsert) ────────────────────────────────────────
+app.post('/api/games/upsert', async (req, res) => {
+  const g = req.body;
+  if (!g || !g.id) {
+    return res.status(400).json({ error: 'Payload inválido: campo "id" obrigatório.' });
+  }
+
+  try {
+    await pool.execute(`
+      INSERT INTO games (
+        id, league, country, home_team, away_team, match_date, match_time, status,
+        odd_home, odd_away, odd_draw,
+        odd_over05, odd_over15, odd_over25,
+        odd_under15, odd_under25, odd_under35, odd_under45,
+        odd_over05_ht, odd_btts_yes, odd_btts_no,
+        efficiency_home, efficiency_away,
+        rank_home, rank_away,
+        wins_percent_home, wins_percent_away,
+        avg_goals_scored_home, avg_goals_scored_away,
+        avg_goals_conceded_home, avg_goals_conceded_away,
+        avg_goals_conceded_2h_home, avg_goals_conceded_2h_away,
+        avg_goals_scored_2h_home, avg_goals_scored_2h_away,
+        avg_goals_scored_1h_home, avg_goals_scored_1h_away,
+        global_goals_match, global_goals_league,
+        home_score, away_score, home_score_ht, away_score_ht
+      ) VALUES (
+        ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?,
+        ?, ?, ?, ?
+      )
+      ON DUPLICATE KEY UPDATE
+        league = VALUES(league),
+        country = VALUES(country),
+        home_team = VALUES(home_team),
+        away_team = VALUES(away_team),
+        match_date = VALUES(match_date),
+        match_time = VALUES(match_time),
+        odd_home = VALUES(odd_home),
+        odd_away = VALUES(odd_away),
+        odd_draw = VALUES(odd_draw),
+        odd_over05 = VALUES(odd_over05),
+        odd_over15 = VALUES(odd_over15),
+        odd_over25 = VALUES(odd_over25),
+        odd_under15 = VALUES(odd_under15),
+        odd_under25 = VALUES(odd_under25),
+        odd_under35 = VALUES(odd_under35),
+        odd_under45 = VALUES(odd_under45),
+        odd_over05_ht = VALUES(odd_over05_ht),
+        odd_btts_yes = VALUES(odd_btts_yes),
+        odd_btts_no = VALUES(odd_btts_no),
+        efficiency_home = VALUES(efficiency_home),
+        efficiency_away = VALUES(efficiency_away),
+        rank_home = VALUES(rank_home),
+        rank_away = VALUES(rank_away),
+        wins_percent_home = VALUES(wins_percent_home),
+        wins_percent_away = VALUES(wins_percent_away),
+        avg_goals_scored_home = VALUES(avg_goals_scored_home),
+        avg_goals_scored_away = VALUES(avg_goals_scored_away),
+        avg_goals_conceded_home = VALUES(avg_goals_conceded_home),
+        avg_goals_conceded_away = VALUES(avg_goals_conceded_away),
+        avg_goals_conceded_2h_home = VALUES(avg_goals_conceded_2h_home),
+        avg_goals_conceded_2h_away = VALUES(avg_goals_conceded_2h_away),
+        avg_goals_scored_2h_home = VALUES(avg_goals_scored_2h_home),
+        avg_goals_scored_2h_away = VALUES(avg_goals_scored_2h_away),
+        avg_goals_scored_1h_home = VALUES(avg_goals_scored_1h_home),
+        avg_goals_scored_1h_away = VALUES(avg_goals_scored_1h_away),
+        global_goals_match = VALUES(global_goals_match),
+        global_goals_league = VALUES(global_goals_league)
+    `, [
+      g.id, g.league, g.country, g.home_team, g.away_team, g.match_date, g.match_time, g.status ?? 'NS',
+      g.odd_home, g.odd_away, g.odd_draw,
+      g.odd_over05, g.odd_over15, g.odd_over25,
+      g.odd_under15, g.odd_under25, g.odd_under35, g.odd_under45,
+      g.odd_over05_ht, g.odd_btts_yes, g.odd_btts_no,
+      g.efficiency_home, g.efficiency_away,
+      g.rank_home, g.rank_away,
+      g.wins_percent_home, g.wins_percent_away,
+      g.avg_goals_scored_home, g.avg_goals_scored_away,
+      g.avg_goals_conceded_home, g.avg_goals_conceded_away,
+      g.avg_goals_conceded_2h_home, g.avg_goals_conceded_2h_away,
+      g.avg_goals_scored_2h_home, g.avg_goals_scored_2h_away,
+      g.avg_goals_scored_1h_home, g.avg_goals_scored_1h_away,
+      g.global_goals_match, g.global_goals_league,
+      g.home_score ?? null, g.away_score ?? null, g.home_score_ht ?? null, g.away_score_ht ?? null,
+    ]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[upsert] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Atualizar resultado de um jogo ───────────────────────────────────────────
+app.put('/api/games/:id/result', async (req, res) => {
+  const { home_score, away_score, home_score_ht, away_score_ht } = req.body;
+  const { id } = req.params;
+
+  if (home_score === undefined || away_score === undefined) {
+    return res.status(400).json({ error: 'home_score e away_score são obrigatórios.' });
+  }
+
+  try {
+    const [result] = await pool.execute(`
+      UPDATE games
+      SET home_score = ?, away_score = ?,
+          home_score_ht = ?, away_score_ht = ?,
+          status = 'FT'
+      WHERE id = ?
+    `, [home_score, away_score, home_score_ht ?? null, away_score_ht ?? null, id]);
+
+    res.json({ success: true, updated: result.affectedRows > 0 });
+  } catch (err) {
+    console.error('[result] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Estatísticas para o Dashboard ────────────────────────────────────────────
+app.get('/api/stats/dashboard', async (req, res) => {
+  try {
+    // 1. KPIs gerais
+    const [[kpiRow]] = await pool.execute(`
+      SELECT
+        COUNT(*) AS total_games,
+        SUM(status = 'FT') AS finished_games,
+        SUM(status = 'NS') AS scheduled_games,
+        COUNT(DISTINCT league) AS total_leagues,
+        COUNT(DISTINCT match_date) AS total_days
+      FROM games
+    `);
+
+    // 2. Win rates por mercado (apenas jogos FT com placar)
+    const [[marketRow]] = await pool.execute(`
+      SELECT
+        COUNT(*) AS ft_total,
+
+        -- Match Odds Home
+        SUM(CASE WHEN odd_home > 0 THEN 1 ELSE 0 END) AS home_market_total,
+        SUM(CASE WHEN odd_home > 0 AND home_score > away_score THEN 1 ELSE 0 END) AS home_wins,
+
+        -- Match Odds Away
+        SUM(CASE WHEN odd_away > 0 THEN 1 ELSE 0 END) AS away_market_total,
+        SUM(CASE WHEN odd_away > 0 AND away_score > home_score THEN 1 ELSE 0 END) AS away_wins,
+
+        -- Over 2.5
+        SUM(CASE WHEN odd_over25 > 0 THEN 1 ELSE 0 END) AS over25_market_total,
+        SUM(CASE WHEN odd_over25 > 0 AND (home_score + away_score) > 2 THEN 1 ELSE 0 END) AS over25_wins,
+
+        -- BTTS Yes
+        SUM(CASE WHEN odd_btts_yes > 0 THEN 1 ELSE 0 END) AS btts_market_total,
+        SUM(CASE WHEN odd_btts_yes > 0 AND home_score > 0 AND away_score > 0 THEN 1 ELSE 0 END) AS btts_wins,
+
+        -- Padrões de gols
+        SUM(CASE WHEN (home_score + away_score) >= 1 THEN 1 ELSE 0 END) AS over05_count,
+        SUM(CASE WHEN (home_score + away_score) >= 2 THEN 1 ELSE 0 END) AS over15_count,
+        SUM(CASE WHEN (home_score + away_score) >= 3 THEN 1 ELSE 0 END) AS over25_count,
+        SUM(CASE WHEN (home_score_ht + away_score_ht) >= 1 THEN 1 ELSE 0 END) AS over05ht_count,
+        SUM(CASE WHEN home_score > away_score THEN 1 ELSE 0 END) AS home_win_count,
+        SUM(CASE WHEN away_score > home_score THEN 1 ELSE 0 END) AS away_win_count,
+        SUM(CASE WHEN home_score = away_score THEN 1 ELSE 0 END) AS draw_count,
+
+        -- Média de gols
+        AVG(home_score + away_score) AS avg_goals_ft,
+        AVG(home_score_ht + away_score_ht) AS avg_goals_ht
+      FROM games
+      WHERE status = 'FT' AND home_score IS NOT NULL AND away_score IS NOT NULL
+    `);
+
+    // 3. Top 10 ligas por volume de jogos finalizados + win rate da casa
+    const [topLeagues] = await pool.execute(`
+      SELECT
+        league,
+        country,
+        COUNT(*) AS total,
+        SUM(CASE WHEN home_score > away_score THEN 1 ELSE 0 END) AS home_wins,
+        AVG(home_score + away_score) AS avg_goals
+      FROM games
+      WHERE status = 'FT' AND home_score IS NOT NULL
+      GROUP BY league, country
+      ORDER BY total DESC
+      LIMIT 10
+    `);
+
+    // 4. Evolução diária — jogos por data (últimos 30 dias com dados)
+    const [dailyVolume] = await pool.execute(`
+      SELECT
+        match_date AS date,
+        COUNT(*) AS total,
+        SUM(status = 'FT') AS finished
+      FROM games
+      GROUP BY match_date
+      ORDER BY match_date ASC
+      LIMIT 30
+    `);
+
+    // 5. Scatter: odd_home média vs win rate por faixa de odd
+    const [oddBuckets] = await pool.execute(`
+      SELECT
+        ROUND(odd_home, 0) AS odd_bucket,
+        AVG(odd_home) AS avg_odd,
+        COUNT(*) AS total,
+        SUM(CASE WHEN home_score > away_score THEN 1 ELSE 0 END) AS wins
+      FROM games
+      WHERE status = 'FT' AND home_score IS NOT NULL AND odd_home > 0 AND odd_home <= 8
+      GROUP BY odd_bucket
+      HAVING total >= 5
+      ORDER BY odd_bucket ASC
+    `);
+
+    // Monta resposta
+    const ft = Number(marketRow.ft_total) || 1; // evitar div/0
+
+    res.json({
+      kpis: {
+        total_games: Number(kpiRow.total_games),
+        finished_games: Number(kpiRow.finished_games),
+        scheduled_games: Number(kpiRow.scheduled_games),
+        total_leagues: Number(kpiRow.total_leagues),
+        total_days: Number(kpiRow.total_days),
+      },
+      market_stats: {
+        home: {
+          total: Number(marketRow.home_market_total),
+          wins: Number(marketRow.home_wins),
+          win_rate: marketRow.home_market_total > 0
+            ? (Number(marketRow.home_wins) / Number(marketRow.home_market_total)) * 100 : 0,
+        },
+        away: {
+          total: Number(marketRow.away_market_total),
+          wins: Number(marketRow.away_wins),
+          win_rate: marketRow.away_market_total > 0
+            ? (Number(marketRow.away_wins) / Number(marketRow.away_market_total)) * 100 : 0,
+        },
+        over25: {
+          total: Number(marketRow.over25_market_total),
+          wins: Number(marketRow.over25_wins),
+          win_rate: marketRow.over25_market_total > 0
+            ? (Number(marketRow.over25_wins) / Number(marketRow.over25_market_total)) * 100 : 0,
+        },
+        btts: {
+          total: Number(marketRow.btts_market_total),
+          wins: Number(marketRow.btts_wins),
+          win_rate: marketRow.btts_market_total > 0
+            ? (Number(marketRow.btts_wins) / Number(marketRow.btts_market_total)) * 100 : 0,
+        },
+      },
+      patterns: {
+        over05_pct: (Number(marketRow.over05_count) / ft) * 100,
+        over15_pct: (Number(marketRow.over15_count) / ft) * 100,
+        over25_pct: (Number(marketRow.over25_count) / ft) * 100,
+        over05ht_pct: (Number(marketRow.over05ht_count) / ft) * 100,
+        home_win_pct: (Number(marketRow.home_win_count) / ft) * 100,
+        away_win_pct: (Number(marketRow.away_win_count) / ft) * 100,
+        draw_pct: (Number(marketRow.draw_count) / ft) * 100,
+        avg_goals_ft: parseFloat(Number(marketRow.avg_goals_ft).toFixed(2)),
+        avg_goals_ht: parseFloat(Number(marketRow.avg_goals_ht).toFixed(2)),
+      },
+      top_leagues: topLeagues.map(l => ({
+        league: l.league,
+        country: l.country,
+        total: Number(l.total),
+        home_win_rate: l.total > 0 ? (Number(l.home_wins) / Number(l.total)) * 100 : 0,
+        avg_goals: parseFloat(Number(l.avg_goals).toFixed(2)),
+      })),
+      daily_volume: dailyVolume.map(d => ({
+        date: d.date,
+        total: Number(d.total),
+        finished: Number(d.finished),
+      })),
+      odd_scatter: oddBuckets.map(b => ({
+        odd: parseFloat(Number(b.avg_odd).toFixed(2)),
+        win_rate: b.total > 0 ? parseFloat(((Number(b.wins) / Number(b.total)) * 100).toFixed(1)) : 0,
+        total: Number(b.total),
+      })),
+    });
+  } catch (err) {
+    console.error('[dashboard stats] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ─── Backtest de Estratégia ────────────────────────────────────────────────────
+app.post('/api/backtest', async (req, res) => {
+  const {
+    market,        // 'home' | 'away' | 'over25' | 'btts'
+    min_odd,
+    max_odd,
+    date_start,
+    date_end,
+    stake = 100,
+  } = req.body;
+
+  // Monta coluna de odd e condição de vitória por mercado
+  const marketMap = {
+    home:   { odd_col: 'odd_home',   win_cond: 'home_score > away_score' },
+    away:   { odd_col: 'odd_away',   win_cond: 'away_score > home_score' },
+    over25: { odd_col: 'odd_over25', win_cond: '(home_score + away_score) > 2' },
+    btts:   { odd_col: 'odd_btts_yes', win_cond: 'home_score > 0 AND away_score > 0' },
+  };
+
+  const m = marketMap[market];
+  if (!m) return res.status(400).json({ error: 'Mercado inválido. Use: home, away, over25, btts.' });
+
+  try {
+    const params = [];
+    let dateFilter = '';
+    if (date_start) { dateFilter += ' AND match_date >= ?'; params.push(date_start); }
+    if (date_end)   { dateFilter += ' AND match_date <= ?'; params.push(date_end); }
+    if (min_odd)    { dateFilter += ` AND ${m.odd_col} >= ?`; params.push(parseFloat(min_odd)); }
+    if (max_odd)    { dateFilter += ` AND ${m.odd_col} <= ?`; params.push(parseFloat(max_odd)); }
+
+    const sql = `
+      SELECT
+        COUNT(*) AS total,
+        SUM(CASE WHEN ${m.win_cond} THEN 1 ELSE 0 END) AS wins,
+        SUM(CASE WHEN NOT (${m.win_cond}) THEN 1 ELSE 0 END) AS losses,
+        AVG(${m.odd_col}) AS avg_odd,
+        MIN(match_date) AS first_date,
+        MAX(match_date) AS last_date
+      FROM games
+      WHERE status = 'FT'
+        AND home_score IS NOT NULL
+        AND ${m.odd_col} > 0
+        ${dateFilter}
+    `;
+
+    const [[row]] = await pool.execute(sql, params);
+
+    const total  = Number(row.total);
+    const wins   = Number(row.wins);
+    const losses = Number(row.losses);
+    const avgOdd = parseFloat(Number(row.avg_odd).toFixed(2));
+
+    const grossWin  = wins   * stake * (avgOdd - 1);
+    const grossLoss = losses * stake;
+    const profit    = grossWin - grossLoss;
+    const roi       = total > 0 ? (profit / (total * stake)) * 100 : 0;
+    const winRate   = total > 0 ? (wins / total) * 100 : 0;
+
+    res.json({
+      total,
+      wins,
+      losses,
+      win_rate: parseFloat(winRate.toFixed(2)),
+      roi: parseFloat(roi.toFixed(2)),
+      profit: parseFloat(profit.toFixed(2)),
+      avg_odd: avgOdd,
+      first_date: row.first_date,
+      last_date: row.last_date,
+    });
+  } catch (err) {
+    console.error('[backtest] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
+  console.log(`   Endpoints disponíveis:`);
+  console.log(`   GET  /api/health`);
+  console.log(`   GET  /api/games`);
+  console.log(`   GET  /api/games/count`);
+  console.log(`   GET  /api/games/:id/exists`);
+  console.log(`   POST /api/games/upsert`);
+  console.log(`   PUT  /api/games/:id/result`);
+});

@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "server": "npx nodemon --watch server server/index.js",
+    "dev:all": "concurrently -n \"React,Server\" -c \"cyan,green\" \"npm run dev\" \"npm run server\""
   },
   "dependencies": {
-    "@sqlite.org/sqlite-wasm": "^3.51.2-build6",
     "lucide-react": "^0.575.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -23,6 +24,7 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.24",
+    "concurrently": "^9.2.1",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.2.0",
     "typescript": "~5.8.2",

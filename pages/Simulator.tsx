@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { GameRecord } from '../types';
-import { initDB } from '../src/db/database';
 import { getAllGames } from '../src/db/gameRepository';
 
 interface SimulationResult extends GameRecord {
@@ -47,16 +46,14 @@ const Simulator: React.FC = () => {
     awayWin: { count: 0, percentage: 0 },
   });
 
-  // Load Data from SQLite
+  // Load Data from MySQL via API
   useEffect(() => {
     const load = async () => {
       try {
-        await initDB();
         const games = await getAllGames();
         setAllGames(games);
-        // Opcional: setar datas baseado nos dados carregados, se quiser
       } catch (e) {
-        console.error('Failed to load DB', e);
+        console.error('Falha ao carregar jogos da API:', e);
       }
     };
     load();

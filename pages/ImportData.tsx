@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { GameRecord } from '../types';
-import { exportUserDb, importUserDb } from '../src/db/database';
 import { insertOrUpdateGame, updateGameResult, getGameCount, gameExists } from '../src/db/gameRepository';
 
 interface ImportLog {
@@ -15,7 +14,6 @@ const ImportData: React.FC = () => {
   const [dbReady, setDbReady] = useState(false);
   const [gameCount, setGameCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const restoreInputRef = useRef<HTMLInputElement>(null);
   const importTypeRef = useRef<'games' | 'results'>('games');
   const logEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,7 +33,7 @@ const ImportData: React.FC = () => {
     // Initial check
     refreshCount().then((count) => {
         setDbReady(true);
-        addLog(`Sistema pronto. ${count} registros no banco local (OPFS).`, 'info');
+        addLog(`Sistema pronto. ${count} registros no banco MySQL.`, 'info');
     });
   }, []);
 
@@ -86,55 +84,6 @@ const ImportData: React.FC = () => {
     reader.readAsText(file);
   };
 
-  // ─── Backup & Restore ─────────────────────────────────────────────────────
-  const handleDownloadBackup = async () => {
-    try {
-      addLog('Gerando backup do banco de dados...', 'info');
-      const blobData = await exportUserDb();
-      if (!blobData) throw new Error('Falha na exportação (dados vazios).');
-      
-      const blob = new Blob([blobData as any], { type: 'application/x-sqlite3' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `odd_cientifica_backup_${new Date().toISOString().slice(0,10)}.db`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      addLog('Backup baixado com sucesso!', 'success');
-    } catch (e: any) {
-      addLog(`Erro no backup: ${e.message}`, 'error');
-    }
-  };
-
-  const handleRestoreClick = () => {
-    if (confirm('ATENÇÃO: Restaurar um backup irá SUBSTITUIR todos os dados atuais.\nDeseja continuar?')) {
-      restoreInputRef.current?.click();
-    }
-  };
-
-  const handleRestoreFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      setIsProcessing(true);
-      addLog(`Lendo backup: ${file.name}...`, 'info');
-      
-      const buffer = await file.arrayBuffer();
-      const uint8 = new Uint8Array(buffer);
-      
-      addLog('Restaurando banco de dados...', 'info');
-      await importUserDb(uint8);
-      
-      addLog('Banco restaurado com sucesso! Recarregando...', 'success');
-      setTimeout(() => window.location.reload(), 2000);
-    } catch (err: any) {
-      addLog(`Erro na restauração: ${err.message}`, 'error');
-      setIsProcessing(false);
-    }
-  };
 
   // ─── CSV Helpers ──────────────────────────────────────────────────────────
   const parseCSVLine = (line: string): string[] => {
@@ -373,12 +322,11 @@ const ImportData: React.FC = () => {
   return (
     <div className="space-y-8">
       <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
-      <input type="file" ref={restoreInputRef} className="hidden" accept=".db,.sqlite" onChange={handleRestoreFile} />
 
       <div className="flex flex-col gap-2 border-l-4 border-primary pl-6 py-2">
         <h1 className="text-white text-4xl font-black leading-tight tracking-tight uppercase italic">Importação de Dados</h1>
         <p className="text-slate-400 text-base max-w-2xl font-display">
-          Gerenciamento do banco de dados local (OPFS). Importe jogos, atualize resultados e faça backups.
+          Gerenciamento do banco de dados MySQL. Importe jogos e atualize resultados via CSV.
         </p>
       </div>
 
@@ -423,30 +371,13 @@ const ImportData: React.FC = () => {
           </div>
         </div>
 
-        {/* Card 3: Status & Backup */}
-        <div className="bg-surface/30 border-2 border-dashed border-border-subtle rounded-xl p-6 flex flex-col items-center justify-between text-center gap-4">
+        {/* Card 3: Status */}
+          <div className="bg-surface/30 border-2 border-dashed border-border-subtle rounded-xl p-6 flex flex-col items-center justify-between text-center gap-4">
           <div>
             <div className={`w-2 h-2 rounded-full mx-auto mb-2 ${dbReady ? 'bg-primary shadow-[0_0_8px_#24ffbd]' : 'bg-slate-600'}`} />
-            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{dbReady ? 'OPFS ONLINE' : 'Carregando...'}</p>
+            <p className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">{dbReady ? 'MySQL ONLINE' : 'Conectando...'}</p>
             <p className="text-4xl font-mono text-primary font-bold mt-2">{gameCount.toLocaleString()}</p>
             <p className="text-xs text-slate-500 uppercase tracking-widest">Registros Totais</p>
-          </div>
-          
-          <div className="w-full grid grid-cols-2 gap-2 mt-2">
-            <button 
-                onClick={handleDownloadBackup}
-                disabled={isProcessing}
-                className="px-3 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-xs font-bold uppercase transition flex items-center justify-center gap-1"
-            >
-                <span className="material-symbols-outlined text-base">download</span> Backup
-            </button>
-            <button 
-                onClick={handleRestoreClick}
-                disabled={isProcessing}
-                className="px-3 py-2 bg-orange-900/50 hover:bg-orange-800 text-orange-200 border border-orange-800 rounded text-xs font-bold uppercase transition flex items-center justify-center gap-1"
-            >
-                <span className="material-symbols-outlined text-base">upload</span> Restaurar
-            </button>
           </div>
         </div>
       </div>

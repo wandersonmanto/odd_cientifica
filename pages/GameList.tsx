@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { GameRecord } from '../types';
-import { initDB } from '../src/db/database';
 import { getAllGames } from '../src/db/gameRepository';
 
 const GameList: React.FC = () => {
@@ -25,18 +24,16 @@ const GameList: React.FC = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        await initDB();
         const games = await getAllGames();
         setAllGames(games);
         if (games.length > 0) {
-          // Sort desc by date to match logic
           const sorted = [...games].sort((a, b) => b.match_date.localeCompare(a.match_date));
           setSelectedDate(sorted[0].match_date);
         } else {
           setSelectedDate(new Date().toISOString().split('T')[0]);
         }
       } catch (e) {
-        console.error('Failed to load DB', e);
+        console.error('Falha ao carregar jogos da API:', e);
       }
     };
     load();
@@ -88,7 +85,7 @@ const GameList: React.FC = () => {
     }
 
     return result;
-  }, [filteredGames, hideUnplayed, sortConfig]);
+  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, sortConfig]);
 
   // Handle Pagination
   const totalPages = Math.ceil(processedGames.length / gamesPerPage) || 1;
