@@ -122,7 +122,10 @@ const Simulator: React.FC = () => {
       switch (market) {
         case 'match_odds_home': oddToCheck = game.odd_home; break;
         case 'match_odds_away': oddToCheck = game.odd_away; break;
+        case 'over_05_ht': oddToCheck = game.odd_over05_ht; break;
+        case 'over_15': oddToCheck = game.odd_over15; break;
         case 'over_25': oddToCheck = game.odd_over25; break;
+        case 'under_35': oddToCheck = game.odd_under35; break;
         case 'btts_yes': oddToCheck = game.odd_btts_yes; break;
       }
       if (!oddToCheck || oddToCheck < minOdd || oddToCheck > maxOdd) return false;
@@ -167,7 +170,10 @@ const Simulator: React.FC = () => {
       let oddUsed = 0;
       if (market === 'match_odds_home') { oddUsed = game.odd_home; won = game.home_score! > game.away_score!; }
       else if (market === 'match_odds_away') { oddUsed = game.odd_away; won = game.away_score! > game.home_score!; }
+      else if (market === 'over_05_ht') { oddUsed = game.odd_over05_ht; won = (game.home_score_ht! + game.away_score_ht!) > 0.5; }
+      else if (market === 'over_15') { oddUsed = game.odd_over15; won = (game.home_score! + game.away_score!) > 1.5; }
       else if (market === 'over_25') { oddUsed = game.odd_over25; won = (game.home_score! + game.away_score!) > 2.5; }
+      else if (market === 'under_35') { oddUsed = game.odd_under35; won = (game.home_score! + game.away_score!) < 3.5; }
       else if (market === 'btts_yes') { oddUsed = game.odd_btts_yes; won = game.home_score! > 0 && game.away_score! > 0; }
 
       const pnl = won ? stake * (oddUsed - 1) : -stake;
@@ -283,7 +289,10 @@ const Simulator: React.FC = () => {
               <select value={market} onChange={e => setMarket(e.target.value)} className="w-full bg-background-dark border-border-subtle rounded-lg text-sm text-white focus:ring-primary focus:border-primary px-3 h-10 appearance-none">
                 <option value="match_odds_home">Match Odds (Casa)</option>
                 <option value="match_odds_away">Match Odds (Visitante)</option>
+                <option value="over_05_ht">Over 0.5 HT</option>
+                <option value="over_15">Over 1.5 FT</option>
                 <option value="over_25">Over 2.5 FT</option>
+                <option value="under_35">Under 3.5 FT</option>
                 <option value="btts_yes">Ambas Marcam (Sim)</option>
               </select>
             </div>
@@ -581,7 +590,11 @@ const Simulator: React.FC = () => {
                     <td className="px-4 py-3 font-mono text-sm font-medium text-primary text-center">
                       {(market === 'match_odds_home' ? row.odd_home :
                         market === 'match_odds_away' ? row.odd_away :
-                        market === 'over_25' ? row.odd_over25 : row.odd_btts_yes)?.toFixed(2)}
+                        market === 'over_05_ht' ? row.odd_over05_ht :
+                        market === 'over_15' ? row.odd_over15 :
+                        market === 'over_25' ? row.odd_over25 :
+                        market === 'under_35' ? row.odd_under35 :
+                        row.odd_btts_yes)?.toFixed(2)}
                     </td>
                     {showStatsColumns && (
                       <>
