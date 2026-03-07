@@ -384,32 +384,76 @@ app.get('/api/stats/dashboard', async (req, res) => {
 // ─── Backtest de Estratégia ────────────────────────────────────────────────────
 app.post('/api/backtest', async (req, res) => {
   const {
-    market,        // 'home' | 'away' | 'over25' | 'btts'
+    market,
     min_odd,
     max_odd,
     date_start,
     date_end,
     stake = 100,
+    // Performance filters
+    rank_home_min, rank_home_max,
+    rank_away_min, rank_away_max,
+    wins_pct_home_min, wins_pct_home_max,
+    wins_pct_away_min, wins_pct_away_max,
+    avg_scored_home_min, avg_scored_home_max,
+    avg_scored_away_min, avg_scored_away_max,
+    avg_conceded_home_min, avg_conceded_home_max,
+    avg_conceded_away_min, avg_conceded_away_max,
+    efficiency_home_min, efficiency_home_max,
+    efficiency_away_min, efficiency_away_max,
+    global_goals_match_min, global_goals_match_max,
+    global_goals_league_min, global_goals_league_max,
+    max_rank_diff,
   } = req.body;
 
   // Monta coluna de odd e condição de vitória por mercado
   const marketMap = {
-    home:   { odd_col: 'odd_home',   win_cond: 'home_score > away_score' },
-    away:   { odd_col: 'odd_away',   win_cond: 'away_score > home_score' },
-    over25: { odd_col: 'odd_over25', win_cond: '(home_score + away_score) > 2' },
-    btts:   { odd_col: 'odd_btts_yes', win_cond: 'home_score > 0 AND away_score > 0' },
+    home:     { odd_col: 'odd_home',      win_cond: 'home_score > away_score' },
+    away:     { odd_col: 'odd_away',      win_cond: 'away_score > home_score' },
+    over05ht: { odd_col: 'odd_over05_ht', win_cond: '(home_score_ht + away_score_ht) > 0' },
+    over15:   { odd_col: 'odd_over15',    win_cond: '(home_score + away_score) > 1' },
+    over25:   { odd_col: 'odd_over25',    win_cond: '(home_score + away_score) > 2' },
+    under35:  { odd_col: 'odd_under35',   win_cond: '(home_score + away_score) < 4' },
+    btts:     { odd_col: 'odd_btts_yes',  win_cond: 'home_score > 0 AND away_score > 0' },
   };
 
   const m = marketMap[market];
-  if (!m) return res.status(400).json({ error: 'Mercado inválido. Use: home, away, over25, btts.' });
+  if (!m) return res.status(400).json({ error: `Mercado inválido: "${market}". Use: ${Object.keys(marketMap).join(', ')}` });
 
   try {
     const params = [];
-    let dateFilter = '';
-    if (date_start) { dateFilter += ' AND match_date >= ?'; params.push(date_start); }
-    if (date_end)   { dateFilter += ' AND match_date <= ?'; params.push(date_end); }
-    if (min_odd)    { dateFilter += ` AND ${m.odd_col} >= ?`; params.push(parseFloat(min_odd)); }
-    if (max_odd)    { dateFilter += ` AND ${m.odd_col} <= ?`; params.push(parseFloat(max_odd)); }
+    let filters = '';
+
+    // Date / odd filters
+    if (date_start) { filters += ' AND match_date >= ?'; params.push(date_start); }
+    if (date_end)   { filters += ' AND match_date <= ?'; params.push(date_end); }
+    if (min_odd != null) { filters += ` AND ${m.odd_col} >= ?`; params.push(parseFloat(min_odd)); }
+    if (max_odd != null) { filters += ` AND ${m.odd_col} <= ?`; params.push(parseFloat(max_odd)); }
+
+    // Performance filters helper
+    const addRange = (col, minVal, maxVal) => {
+      if (minVal != null) { filters += ` AND ${col} >= ?`; params.push(parseFloat(minVal)); }
+      if (maxVal != null) { filters += ` AND ${col} <= ?`; params.push(parseFloat(maxVal)); }
+    };
+
+    addRange('rank_home',              rank_home_min,          rank_home_max);
+    addRange('rank_away',              rank_away_min,          rank_away_max);
+    addRange('wins_percent_home',      wins_pct_home_min,      wins_pct_home_max);
+    addRange('wins_percent_away',      wins_pct_away_min,      wins_pct_away_max);
+    addRange('avg_goals_scored_home',  avg_scored_home_min,    avg_scored_home_max);
+    addRange('avg_goals_scored_away',  avg_scored_away_min,    avg_scored_away_max);
+    addRange('avg_goals_conceded_home',avg_conceded_home_min,  avg_conceded_home_max);
+    addRange('avg_goals_conceded_away',avg_conceded_away_min,  avg_conceded_away_max);
+    addRange('efficiency_home',        efficiency_home_min,    efficiency_home_max);
+    addRange('efficiency_away',        efficiency_away_min,    efficiency_away_max);
+    addRange('global_goals_match',     global_goals_match_min, global_goals_match_max);
+    addRange('global_goals_league',    global_goals_league_min,global_goals_league_max);
+
+    // Rank difference filter (calculated)
+    if (max_rank_diff != null) {
+      filters += ' AND ABS(rank_home - rank_away) <= ?';
+      params.push(parseFloat(max_rank_diff));
+    }
 
     const sql = `
       SELECT
@@ -423,7 +467,7 @@ app.post('/api/backtest', async (req, res) => {
       WHERE status = 'FT'
         AND home_score IS NOT NULL
         AND ${m.odd_col} > 0
-        ${dateFilter}
+        ${filters}
     `;
 
     const [[row]] = await pool.execute(sql, params);
