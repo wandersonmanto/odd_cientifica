@@ -80,6 +80,31 @@ async function init() {
   `);
 
   console.log('✅ Tabela `games` criada (ou já existia).');
+
+  // Cria a tabela daily_picks
+  await connection.query(`
+    CREATE TABLE IF NOT EXISTS daily_picks (
+      id            INT AUTO_INCREMENT PRIMARY KEY,
+      game_id       VARCHAR(255) NOT NULL,
+      pick_date     VARCHAR(20)  NOT NULL,
+      market        VARCHAR(50)  NOT NULL,
+      odd_used      FLOAT        NOT NULL,
+      created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+      resolved      TINYINT(1)   DEFAULT 0,
+      result        TINYINT(1)   DEFAULT NULL,
+      resolved_at   DATETIME     DEFAULT NULL,
+      home_team     VARCHAR(255),
+      away_team     VARCHAR(255),
+      league        VARCHAR(255),
+      country       VARCHAR(255),
+      match_time    VARCHAR(10),
+      INDEX idx_pick_date (pick_date),
+      INDEX idx_game_id   (game_id),
+      INDEX idx_resolved  (resolved)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `);
+  console.log('✅ Tabela `daily_picks` criada (ou já existia).');
+
   await connection.end();
   console.log('🎉 Banco de dados inicializado com sucesso!');
   console.log(`   Host: ${process.env.DB_HOST}:${process.env.DB_PORT}`);

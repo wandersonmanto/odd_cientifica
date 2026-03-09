@@ -209,9 +209,164 @@ app.put('/api/games/:id/result', async (req, res) => {
       WHERE id = ?
     `, [home_score, away_score, home_score_ht ?? null, away_score_ht ?? null, id]);
 
+    // ── Auto-resolver picks pendentes para este jogo ─────────────────────────
+    try {
+      const [pendingPicks] = await pool.execute(
+        'SELECT id, market FROM daily_picks WHERE game_id = ? AND resolved = 0',
+        [id]
+      );
+
+      const hs = Number(home_score);
+      const as_ = Number(away_score);
+      const hsHT = Number(home_score_ht ?? 0);
+      const asHT = Number(away_score_ht ?? 0);
+
+      const marketResult = (market) => {
+        switch (market) {
+          case 'home':     return hs > as_;
+          case 'away':     return as_ > hs;
+          case 'over05ht': return (hsHT + asHT) > 0;
+          case 'over15':   return (hs + as_) > 1;
+          case 'over25':   return (hs + as_) > 2;
+          case 'under35':  return (hs + as_) < 4;
+          case 'under45':  return (hs + as_) < 5;
+          case 'btts':     return hs > 0 && as_ > 0;
+          default:         return null;
+        }
+      };
+
+      for (const pick of pendingPicks) {
+        const won = marketResult(pick.market);
+        if (won !== null) {
+          await pool.execute(
+            'UPDATE daily_picks SET resolved = 1, result = ?, resolved_at = NOW() WHERE id = ?',
+            [won ? 1 : 0, pick.id]
+          );
+        }
+      }
+
+      if (pendingPicks.length > 0) {
+        console.log(`[picks] ${pendingPicks.length} pick(s) resolvido(s) para game ${id}`);
+      }
+    } catch (pickErr) {
+      console.warn('[picks] Erro ao resolver picks:', pickErr.message);
+      // Não propaga o erro — o resultado do jogo já foi atualizado
+    }
+
     res.json({ success: true, updated: result.affectedRows > 0 });
   } catch (err) {
     console.error('[result] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Picks do Dia ──────────────────────────────────────────────────────────────
+
+// Listar picks de uma data (ou todos se sem ?date=)
+app.get('/api/picks', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const params = [];
+    let where = '';
+    if (date) { where = 'WHERE pick_date = ?'; params.push(date); }
+
+    const [rows] = await pool.execute(
+      `SELECT * FROM daily_picks ${where} ORDER BY match_time ASC, created_at ASC`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[picks GET] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Salvar pick(s) — aceita array
+app.post('/api/picks', async (req, res) => {
+  const picks = Array.isArray(req.body) ? req.body : [req.body];
+  if (!picks.length) return res.status(400).json({ error: 'Payload vazio.' });
+
+  try {
+    const inserted = [];
+    for (const p of picks) {
+      if (!p.game_id || !p.market || !p.odd_used || !p.pick_date) {
+        return res.status(400).json({ error: 'Campos obrigatórios: game_id, market, odd_used, pick_date' });
+      }
+
+      // Evita duplicata: mesmo jogo + mesmo mercado
+      const [existing] = await pool.execute(
+        'SELECT id FROM daily_picks WHERE game_id = ? AND market = ?',
+        [p.game_id, p.market]
+      );
+      if (existing.length > 0) {
+        inserted.push({ skipped: true, game_id: p.game_id, market: p.market });
+        continue;
+      }
+
+      const [result] = await pool.execute(`
+        INSERT INTO daily_picks
+          (game_id, pick_date, market, odd_used, home_team, away_team, league, country, match_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        p.game_id, p.pick_date, p.market, p.odd_used,
+        p.home_team ?? null, p.away_team ?? null,
+        p.league ?? null, p.country ?? null, p.match_time ?? null,
+      ]);
+      inserted.push({ id: result.insertId, game_id: p.game_id, market: p.market });
+    }
+    res.json({ success: true, inserted });
+  } catch (err) {
+    console.error('[picks POST] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remover pick
+app.delete('/api/picks/:id', async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM daily_picks WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[picks DELETE] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Estatísticas agregadas de picks
+app.get('/api/picks/stats', async (req, res) => {
+  try {
+    const [[row]] = await pool.execute(`
+      SELECT
+        COUNT(*) AS total,
+        SUM(resolved = 1) AS resolved_count,
+        SUM(resolved = 0) AS pending_count,
+        SUM(result = 1) AS wins,
+        SUM(result = 0) AS losses,
+        AVG(odd_used) AS avg_odd
+      FROM daily_picks
+    `);
+
+    const total     = Number(row.resolved_count) || 0;
+    const wins      = Number(row.wins) || 0;
+    const losses    = Number(row.losses) || 0;
+    const avgOdd    = parseFloat(Number(row.avg_odd || 0).toFixed(2));
+    const winRate   = total > 0 ? parseFloat(((wins / total) * 100).toFixed(2)) : 0;
+    const profit    = wins * (avgOdd - 1) * 100 - losses * 100;
+    const roi       = total > 0 ? parseFloat((profit / (total * 100) * 100).toFixed(2)) : 0;
+
+    res.json({
+      total: Number(row.total),
+      resolved: total,
+      pending: Number(row.pending_count) || 0,
+      wins,
+      losses,
+      win_rate: winRate,
+      avg_odd: avgOdd,
+      profit: parseFloat(profit.toFixed(2)),
+      roi,
+    });
+  } catch (err) {
+    console.error('[picks/stats] Erro:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

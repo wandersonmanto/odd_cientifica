@@ -6,6 +6,7 @@ import ImportData from './pages/ImportData';
 import Strategies from './pages/Strategies';
 import GameList from './pages/GameList';
 import CompoundOdds from './pages/CompoundOdds';
+import DaySelection from './pages/DaySelection';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -34,6 +35,7 @@ const Header: React.FC = () => {
           <Link to="/dashboard" className={getLinkClass('/dashboard')}>Dashboard</Link>
           <Link to="/import" className={getLinkClass('/import')}>Importação</Link>
           <Link to="/games" className={getLinkClass('/games')}>Lista de Jogos</Link>
+          <Link to="/day-selection" className={getLinkClass('/day-selection')}>⭐ Seleção do Dia</Link>
           <Link to="/simulator" className={getLinkClass('/simulator')}>Simulador</Link>
           <Link to="/strategies" className={getLinkClass('/strategies')}>Estratégias</Link>
           <Link to="/compound" className={getLinkClass('/compound')}>Juros Compostos</Link>
@@ -75,6 +77,7 @@ const App: React.FC = () => {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/games" element={<GameList />} />
+            <Route path="/day-selection" element={<DaySelection />} />
             <Route path="/simulator" element={<Simulator />} />
             <Route path="/import" element={<ImportData />} />
             <Route path="/strategies" element={<Strategies />} />
