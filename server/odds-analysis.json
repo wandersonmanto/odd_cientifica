@@ -1,0 +1,972 @@
+{
+  "total_games": 19855,
+  "finished_games": 17248,
+  "markets": [
+    {
+      "label": "Over 0.5 HT",
+      "col": "odd_over05_ht",
+      "total_in_range": 2147,
+      "avg_odd": 1.345,
+      "win_rate": 66.98,
+      "breakeven": 74.35,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.32,
+          "count": 291,
+          "wins": 197,
+          "win_rate": 67.7
+        },
+        {
+          "odd": 1.38,
+          "count": 275,
+          "wins": 198,
+          "win_rate": 72
+        },
+        {
+          "odd": 1.36,
+          "count": 234,
+          "wins": 155,
+          "win_rate": 66.24
+        },
+        {
+          "odd": 1.34,
+          "count": 224,
+          "wins": 155,
+          "win_rate": 69.2
+        },
+        {
+          "odd": 1.3,
+          "count": 220,
+          "wins": 148,
+          "win_rate": 67.27
+        },
+        {
+          "odd": 1.31,
+          "count": 201,
+          "wins": 138,
+          "win_rate": 68.66
+        },
+        {
+          "odd": 1.39,
+          "count": 197,
+          "wins": 126,
+          "win_rate": 63.96
+        },
+        {
+          "odd": 1.37,
+          "count": 193,
+          "wins": 122,
+          "win_rate": 63.21
+        },
+        {
+          "odd": 1.33,
+          "count": 161,
+          "wins": 101,
+          "win_rate": 62.73
+        },
+        {
+          "odd": 1.35,
+          "count": 151,
+          "wins": 98,
+          "win_rate": 64.9
+        }
+      ]
+    },
+    {
+      "label": "Over 1.5",
+      "col": "odd_over15",
+      "total_in_range": 1681,
+      "avg_odd": 1.341,
+      "win_rate": 67.46,
+      "breakeven": 74.57,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.3,
+          "count": 233,
+          "wins": 151,
+          "win_rate": 64.81
+        },
+        {
+          "odd": 1.32,
+          "count": 223,
+          "wins": 151,
+          "win_rate": 67.71
+        },
+        {
+          "odd": 1.34,
+          "count": 208,
+          "wins": 141,
+          "win_rate": 67.79
+        },
+        {
+          "odd": 1.36,
+          "count": 186,
+          "wins": 124,
+          "win_rate": 66.67
+        },
+        {
+          "odd": 1.38,
+          "count": 166,
+          "wins": 116,
+          "win_rate": 69.88
+        },
+        {
+          "odd": 1.33,
+          "count": 148,
+          "wins": 105,
+          "win_rate": 70.95
+        },
+        {
+          "odd": 1.31,
+          "count": 147,
+          "wins": 112,
+          "win_rate": 76.19
+        },
+        {
+          "odd": 1.35,
+          "count": 143,
+          "wins": 97,
+          "win_rate": 67.83
+        },
+        {
+          "odd": 1.37,
+          "count": 118,
+          "wins": 74,
+          "win_rate": 62.71
+        },
+        {
+          "odd": 1.39,
+          "count": 109,
+          "wins": 63,
+          "win_rate": 57.8
+        }
+      ]
+    },
+    {
+      "label": "Under 3.5",
+      "col": "odd_under35",
+      "total_in_range": 1321,
+      "avg_odd": 1.342,
+      "win_rate": 71.99,
+      "breakeven": 74.52,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.3,
+          "count": 191,
+          "wins": 147,
+          "win_rate": 76.96
+        },
+        {
+          "odd": 1.32,
+          "count": 164,
+          "wins": 112,
+          "win_rate": 68.29
+        },
+        {
+          "odd": 1.34,
+          "count": 163,
+          "wins": 125,
+          "win_rate": 76.69
+        },
+        {
+          "odd": 1.36,
+          "count": 153,
+          "wins": 109,
+          "win_rate": 71.24
+        },
+        {
+          "odd": 1.38,
+          "count": 140,
+          "wins": 101,
+          "win_rate": 72.14
+        },
+        {
+          "odd": 1.31,
+          "count": 112,
+          "wins": 81,
+          "win_rate": 72.32
+        },
+        {
+          "odd": 1.33,
+          "count": 106,
+          "wins": 77,
+          "win_rate": 72.64
+        },
+        {
+          "odd": 1.35,
+          "count": 99,
+          "wins": 60,
+          "win_rate": 60.61
+        },
+        {
+          "odd": 1.39,
+          "count": 98,
+          "wins": 63,
+          "win_rate": 64.29
+        },
+        {
+          "odd": 1.37,
+          "count": 95,
+          "wins": 76,
+          "win_rate": 80
+        }
+      ]
+    },
+    {
+      "label": "Casa (1X2)",
+      "col": "odd_home",
+      "total_in_range": 417,
+      "avg_odd": 1.348,
+      "win_rate": 70.5,
+      "breakeven": 74.18,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.36,
+          "count": 65,
+          "wins": 46,
+          "win_rate": 70.77
+        },
+        {
+          "odd": 1.34,
+          "count": 49,
+          "wins": 36,
+          "win_rate": 73.47
+        },
+        {
+          "odd": 1.39,
+          "count": 48,
+          "wins": 28,
+          "win_rate": 58.33
+        },
+        {
+          "odd": 1.38,
+          "count": 44,
+          "wins": 32,
+          "win_rate": 72.73
+        },
+        {
+          "odd": 1.3,
+          "count": 41,
+          "wins": 31,
+          "win_rate": 75.61
+        },
+        {
+          "odd": 1.35,
+          "count": 39,
+          "wins": 28,
+          "win_rate": 71.79
+        },
+        {
+          "odd": 1.32,
+          "count": 38,
+          "wins": 26,
+          "win_rate": 68.42
+        },
+        {
+          "odd": 1.37,
+          "count": 34,
+          "wins": 23,
+          "win_rate": 67.65
+        },
+        {
+          "odd": 1.31,
+          "count": 31,
+          "wins": 24,
+          "win_rate": 77.42
+        },
+        {
+          "odd": 1.33,
+          "count": 28,
+          "wins": 20,
+          "win_rate": 71.43
+        }
+      ]
+    },
+    {
+      "label": "Under 2.5",
+      "col": "odd_under25",
+      "total_in_range": 415,
+      "avg_odd": 1.347,
+      "win_rate": 69.88,
+      "breakeven": 74.24,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.36,
+          "count": 62,
+          "wins": 42,
+          "win_rate": 67.74
+        },
+        {
+          "odd": 1.38,
+          "count": 52,
+          "wins": 35,
+          "win_rate": 67.31
+        },
+        {
+          "odd": 1.33,
+          "count": 49,
+          "wins": 37,
+          "win_rate": 75.51
+        },
+        {
+          "odd": 1.34,
+          "count": 49,
+          "wins": 38,
+          "win_rate": 77.55
+        },
+        {
+          "odd": 1.39,
+          "count": 37,
+          "wins": 25,
+          "win_rate": 67.57
+        },
+        {
+          "odd": 1.32,
+          "count": 35,
+          "wins": 21,
+          "win_rate": 60
+        },
+        {
+          "odd": 1.3,
+          "count": 35,
+          "wins": 27,
+          "win_rate": 77.14
+        },
+        {
+          "odd": 1.31,
+          "count": 34,
+          "wins": 24,
+          "win_rate": 70.59
+        },
+        {
+          "odd": 1.37,
+          "count": 31,
+          "wins": 23,
+          "win_rate": 74.19
+        },
+        {
+          "odd": 1.35,
+          "count": 31,
+          "wins": 18,
+          "win_rate": 58.06
+        }
+      ]
+    },
+    {
+      "label": "Over 2.5",
+      "col": "odd_over25",
+      "total_in_range": 394,
+      "avg_odd": 1.344,
+      "win_rate": 72.08,
+      "breakeven": 74.4,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.36,
+          "count": 99,
+          "wins": 67,
+          "win_rate": 67.68
+        },
+        {
+          "odd": 1.33,
+          "count": 68,
+          "wins": 50,
+          "win_rate": 73.53
+        },
+        {
+          "odd": 1.3,
+          "count": 55,
+          "wins": 43,
+          "win_rate": 78.18
+        },
+        {
+          "odd": 1.38,
+          "count": 43,
+          "wins": 32,
+          "win_rate": 74.42
+        },
+        {
+          "odd": 1.31,
+          "count": 27,
+          "wins": 18,
+          "win_rate": 66.67
+        },
+        {
+          "odd": 1.37,
+          "count": 24,
+          "wins": 19,
+          "win_rate": 79.17
+        },
+        {
+          "odd": 1.39,
+          "count": 22,
+          "wins": 15,
+          "win_rate": 68.18
+        },
+        {
+          "odd": 1.35,
+          "count": 19,
+          "wins": 12,
+          "win_rate": 63.16
+        },
+        {
+          "odd": 1.32,
+          "count": 19,
+          "wins": 16,
+          "win_rate": 84.21
+        },
+        {
+          "odd": 1.34,
+          "count": 18,
+          "wins": 12,
+          "win_rate": 66.67
+        }
+      ]
+    },
+    {
+      "label": "Under 4.5",
+      "col": "odd_under45",
+      "total_in_range": 216,
+      "avg_odd": 1.34,
+      "win_rate": 72.69,
+      "breakeven": 74.63,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.32,
+          "count": 35,
+          "wins": 27,
+          "win_rate": 77.14
+        },
+        {
+          "odd": 1.34,
+          "count": 27,
+          "wins": 21,
+          "win_rate": 77.78
+        },
+        {
+          "odd": 1.31,
+          "count": 27,
+          "wins": 20,
+          "win_rate": 74.07
+        },
+        {
+          "odd": 1.36,
+          "count": 23,
+          "wins": 15,
+          "win_rate": 65.22
+        },
+        {
+          "odd": 1.3,
+          "count": 23,
+          "wins": 17,
+          "win_rate": 73.91
+        },
+        {
+          "odd": 1.38,
+          "count": 22,
+          "wins": 16,
+          "win_rate": 72.73
+        },
+        {
+          "odd": 1.37,
+          "count": 19,
+          "wins": 11,
+          "win_rate": 57.89
+        },
+        {
+          "odd": 1.35,
+          "count": 15,
+          "wins": 9,
+          "win_rate": 60
+        },
+        {
+          "odd": 1.33,
+          "count": 14,
+          "wins": 10,
+          "win_rate": 71.43
+        },
+        {
+          "odd": 1.39,
+          "count": 11,
+          "wins": 11,
+          "win_rate": 100
+        }
+      ]
+    },
+    {
+      "label": "Fora (1X2)",
+      "col": "odd_away",
+      "total_in_range": 163,
+      "avg_odd": 1.345,
+      "win_rate": 67.48,
+      "breakeven": 74.35,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.33,
+          "count": 22,
+          "wins": 15,
+          "win_rate": 68.18
+        },
+        {
+          "odd": 1.38,
+          "count": 20,
+          "wins": 14,
+          "win_rate": 70
+        },
+        {
+          "odd": 1.36,
+          "count": 19,
+          "wins": 12,
+          "win_rate": 63.16
+        },
+        {
+          "odd": 1.32,
+          "count": 18,
+          "wins": 11,
+          "win_rate": 61.11
+        },
+        {
+          "odd": 1.3,
+          "count": 16,
+          "wins": 14,
+          "win_rate": 87.5
+        },
+        {
+          "odd": 1.31,
+          "count": 16,
+          "wins": 12,
+          "win_rate": 75
+        },
+        {
+          "odd": 1.39,
+          "count": 16,
+          "wins": 11,
+          "win_rate": 68.75
+        },
+        {
+          "odd": 1.37,
+          "count": 14,
+          "wins": 7,
+          "win_rate": 50
+        },
+        {
+          "odd": 1.35,
+          "count": 11,
+          "wins": 7,
+          "win_rate": 63.64
+        },
+        {
+          "odd": 1.34,
+          "count": 11,
+          "wins": 7,
+          "win_rate": 63.64
+        }
+      ]
+    },
+    {
+      "label": "BTTS Sim",
+      "col": "odd_btts_yes",
+      "total_in_range": 124,
+      "avg_odd": 1.353,
+      "win_rate": 63.71,
+      "breakeven": 73.91,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.36,
+          "count": 24,
+          "wins": 15,
+          "win_rate": 62.5
+        },
+        {
+          "odd": 1.38,
+          "count": 19,
+          "wins": 11,
+          "win_rate": 57.89
+        },
+        {
+          "odd": 1.3,
+          "count": 13,
+          "wins": 8,
+          "win_rate": 61.54
+        },
+        {
+          "odd": 1.39,
+          "count": 13,
+          "wins": 8,
+          "win_rate": 61.54
+        },
+        {
+          "odd": 1.37,
+          "count": 13,
+          "wins": 9,
+          "win_rate": 69.23
+        },
+        {
+          "odd": 1.35,
+          "count": 13,
+          "wins": 7,
+          "win_rate": 53.85
+        },
+        {
+          "odd": 1.34,
+          "count": 11,
+          "wins": 10,
+          "win_rate": 90.91
+        },
+        {
+          "odd": 1.33,
+          "count": 8,
+          "wins": 4,
+          "win_rate": 50
+        },
+        {
+          "odd": 1.31,
+          "count": 6,
+          "wins": 5,
+          "win_rate": 83.33
+        },
+        {
+          "odd": 1.32,
+          "count": 4,
+          "wins": 2,
+          "win_rate": 50
+        }
+      ]
+    },
+    {
+      "label": "BTTS Nao",
+      "col": "odd_btts_no",
+      "total_in_range": 79,
+      "avg_odd": 1.351,
+      "win_rate": 54.43,
+      "breakeven": 74.02,
+      "is_lucrativo": false,
+      "odds_distribution": [
+        {
+          "odd": 1.36,
+          "count": 12,
+          "wins": 6,
+          "win_rate": 50
+        },
+        {
+          "odd": 1.39,
+          "count": 11,
+          "wins": 7,
+          "win_rate": 63.64
+        },
+        {
+          "odd": 1.35,
+          "count": 10,
+          "wins": 3,
+          "win_rate": 30
+        },
+        {
+          "odd": 1.38,
+          "count": 10,
+          "wins": 7,
+          "win_rate": 70
+        },
+        {
+          "odd": 1.32,
+          "count": 9,
+          "wins": 7,
+          "win_rate": 77.78
+        },
+        {
+          "odd": 1.34,
+          "count": 8,
+          "wins": 4,
+          "win_rate": 50
+        },
+        {
+          "odd": 1.37,
+          "count": 6,
+          "wins": 2,
+          "win_rate": 33.33
+        },
+        {
+          "odd": 1.3,
+          "count": 6,
+          "wins": 3,
+          "win_rate": 50
+        },
+        {
+          "odd": 1.31,
+          "count": 4,
+          "wins": 3,
+          "win_rate": 75
+        },
+        {
+          "odd": 1.33,
+          "count": 3,
+          "wins": 1,
+          "win_rate": 33.33
+        }
+      ]
+    }
+  ],
+  "top_odds_global": [
+    {
+      "odd": 1.32,
+      "mercado": "Over 0.5 HT",
+      "total": 291,
+      "wins": 197,
+      "win_rate": 67.7
+    },
+    {
+      "odd": 1.38,
+      "mercado": "Over 0.5 HT",
+      "total": 275,
+      "wins": 198,
+      "win_rate": 72
+    },
+    {
+      "odd": 1.36,
+      "mercado": "Over 0.5 HT",
+      "total": 234,
+      "wins": 155,
+      "win_rate": 66.24
+    },
+    {
+      "odd": 1.3,
+      "mercado": "Over 1.5",
+      "total": 233,
+      "wins": 151,
+      "win_rate": 64.81
+    },
+    {
+      "odd": 1.34,
+      "mercado": "Over 0.5 HT",
+      "total": 224,
+      "wins": 155,
+      "win_rate": 69.2
+    },
+    {
+      "odd": 1.32,
+      "mercado": "Over 1.5",
+      "total": 223,
+      "wins": 151,
+      "win_rate": 67.71
+    },
+    {
+      "odd": 1.3,
+      "mercado": "Over 0.5 HT",
+      "total": 220,
+      "wins": 148,
+      "win_rate": 67.27
+    },
+    {
+      "odd": 1.34,
+      "mercado": "Over 1.5",
+      "total": 208,
+      "wins": 141,
+      "win_rate": 67.79
+    },
+    {
+      "odd": 1.31,
+      "mercado": "Over 0.5 HT",
+      "total": 201,
+      "wins": 138,
+      "win_rate": 68.66
+    },
+    {
+      "odd": 1.39,
+      "mercado": "Over 0.5 HT",
+      "total": 197,
+      "wins": 126,
+      "win_rate": 63.96
+    },
+    {
+      "odd": 1.37,
+      "mercado": "Over 0.5 HT",
+      "total": 193,
+      "wins": 122,
+      "win_rate": 63.21
+    },
+    {
+      "odd": 1.3,
+      "mercado": "Under 3.5",
+      "total": 191,
+      "wins": 147,
+      "win_rate": 76.96
+    },
+    {
+      "odd": 1.36,
+      "mercado": "Over 1.5",
+      "total": 186,
+      "wins": 124,
+      "win_rate": 66.67
+    },
+    {
+      "odd": 1.38,
+      "mercado": "Over 1.5",
+      "total": 166,
+      "wins": 116,
+      "win_rate": 69.88
+    },
+    {
+      "odd": 1.32,
+      "mercado": "Under 3.5",
+      "total": 164,
+      "wins": 112,
+      "win_rate": 68.29
+    },
+    {
+      "odd": 1.34,
+      "mercado": "Under 3.5",
+      "total": 163,
+      "wins": 125,
+      "win_rate": 76.69
+    },
+    {
+      "odd": 1.33,
+      "mercado": "Over 0.5 HT",
+      "total": 161,
+      "wins": 101,
+      "win_rate": 62.73
+    },
+    {
+      "odd": 1.36,
+      "mercado": "Under 3.5",
+      "total": 153,
+      "wins": 109,
+      "win_rate": 71.24
+    },
+    {
+      "odd": 1.35,
+      "mercado": "Over 0.5 HT",
+      "total": 151,
+      "wins": 98,
+      "win_rate": 64.9
+    },
+    {
+      "odd": 1.33,
+      "mercado": "Over 1.5",
+      "total": 148,
+      "wins": 105,
+      "win_rate": 70.95
+    },
+    {
+      "odd": 1.31,
+      "mercado": "Over 1.5",
+      "total": 147,
+      "wins": 112,
+      "win_rate": 76.19
+    },
+    {
+      "odd": 1.35,
+      "mercado": "Over 1.5",
+      "total": 143,
+      "wins": 97,
+      "win_rate": 67.83
+    },
+    {
+      "odd": 1.38,
+      "mercado": "Under 3.5",
+      "total": 140,
+      "wins": 101,
+      "win_rate": 72.14
+    },
+    {
+      "odd": 1.37,
+      "mercado": "Over 1.5",
+      "total": 118,
+      "wins": 74,
+      "win_rate": 62.71
+    },
+    {
+      "odd": 1.31,
+      "mercado": "Under 3.5",
+      "total": 112,
+      "wins": 81,
+      "win_rate": 72.32
+    }
+  ],
+  "compound_math": [
+    {
+      "avg_odd": 1.29,
+      "compound_odd": 1.6641,
+      "profit_pct": 66.41,
+      "min_win_rate_single": 77.52,
+      "min_win_rate_both": 60.09
+    },
+    {
+      "avg_odd": 1.3,
+      "compound_odd": 1.69,
+      "profit_pct": 69,
+      "min_win_rate_single": 76.92,
+      "min_win_rate_both": 59.17
+    },
+    {
+      "avg_odd": 1.31,
+      "compound_odd": 1.7161,
+      "profit_pct": 71.61,
+      "min_win_rate_single": 76.34,
+      "min_win_rate_both": 58.27
+    },
+    {
+      "avg_odd": 1.32,
+      "compound_odd": 1.7424,
+      "profit_pct": 74.24,
+      "min_win_rate_single": 75.76,
+      "min_win_rate_both": 57.39
+    },
+    {
+      "avg_odd": 1.33,
+      "compound_odd": 1.7689,
+      "profit_pct": 76.89,
+      "min_win_rate_single": 75.19,
+      "min_win_rate_both": 56.53
+    },
+    {
+      "avg_odd": 1.34,
+      "compound_odd": 1.7956,
+      "profit_pct": 79.56,
+      "min_win_rate_single": 74.63,
+      "min_win_rate_both": 55.69
+    },
+    {
+      "avg_odd": 1.35,
+      "compound_odd": 1.8225,
+      "profit_pct": 82.25,
+      "min_win_rate_single": 74.07,
+      "min_win_rate_both": 54.87
+    },
+    {
+      "avg_odd": 1.36,
+      "compound_odd": 1.8496,
+      "profit_pct": 84.96,
+      "min_win_rate_single": 73.53,
+      "min_win_rate_both": 54.07
+    },
+    {
+      "avg_odd": 1.37,
+      "compound_odd": 1.8769,
+      "profit_pct": 87.69,
+      "min_win_rate_single": 72.99,
+      "min_win_rate_both": 53.28
+    },
+    {
+      "avg_odd": 1.38,
+      "compound_odd": 1.9044,
+      "profit_pct": 90.44,
+      "min_win_rate_single": 72.46,
+      "min_win_rate_both": 52.51
+    },
+    {
+      "avg_odd": 1.39,
+      "compound_odd": 1.9321,
+      "profit_pct": 93.21,
+      "min_win_rate_single": 71.94,
+      "min_win_rate_both": 51.76
+    }
+  ]
+}

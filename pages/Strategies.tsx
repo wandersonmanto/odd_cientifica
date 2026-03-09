@@ -3,7 +3,7 @@ import { apiFetch } from '../src/api/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Market = 'home' | 'away' | 'over05ht' | 'over15' | 'over25' | 'under35' | 'btts';
+type Market = 'home' | 'away' | 'over05ht' | 'over15' | 'over25' | 'under35' | 'under45' | 'btts';
 
 interface RangeFilter {
   min: string;
@@ -45,6 +45,8 @@ interface Strategy {
   max_odd: number;
   date_start: string;
   date_end: string;
+  time_start: string;
+  time_end: string;
   stake: number;
   active: boolean;
   created_at: string;
@@ -70,6 +72,7 @@ const MARKET_LABELS: Record<Market, string> = {
   over15:   'Over 1.5 FT',
   over25:   'Over 2.5 FT',
   under35:  'Under 3.5 FT',
+  under45:  'Under 4.5 FT',
   btts:     'Ambas Marcam (Sim)',
 };
 
@@ -95,7 +98,7 @@ function countActivePerf(p?: PerformanceFilters): number {
   ].filter(f => f.min !== '' || f.max !== '').length + (p.maxRankDiff !== '' ? 1 : 0);
 }
 
-function buildBacktestPayload(s: Pick<Strategy, 'market' | 'min_odd' | 'max_odd' | 'date_start' | 'date_end' | 'stake' | 'perf'>) {
+function buildBacktestPayload(s: Pick<Strategy, 'market' | 'min_odd' | 'max_odd' | 'date_start' | 'date_end' | 'time_start' | 'time_end' | 'stake' | 'perf'>) {
   const p = s.perf;
   const toNum = (v: string) => v !== '' ? parseFloat(v) : undefined;
   return {
@@ -103,7 +106,9 @@ function buildBacktestPayload(s: Pick<Strategy, 'market' | 'min_odd' | 'max_odd'
     min_odd: s.min_odd,
     max_odd: s.max_odd,
     date_start: s.date_start || undefined,
-    date_end: s.date_end || undefined,
+    date_end:   s.date_end   || undefined,
+    time_start: s.time_start || undefined,
+    time_end:   s.time_end   || undefined,
     stake: s.stake,
     // performance filters
     rank_home_min:         p ? toNum(p.rankHome.min) : undefined,
@@ -190,7 +195,7 @@ const RangeInput: React.FC<{
 
 const DEFAULT_FORM: Omit<Strategy, 'id' | 'active' | 'created_at'> = {
   name: '', market: 'home', min_odd: 1.20, max_odd: 2.00,
-  date_start: '', date_end: '', stake: 100, perf: defaultPerf(),
+  date_start: '', date_end: '', time_start: '00:00', time_end: '23:59', stake: 100, perf: defaultPerf(),
 };
 
 const StrategyModal: React.FC<{
@@ -200,7 +205,7 @@ const StrategyModal: React.FC<{
 }> = ({ initial, onSave, onClose }) => {
   const [form, setForm] = useState<Omit<Strategy, 'id' | 'active' | 'created_at'>>(
     initial
-      ? { name: initial.name, market: initial.market, min_odd: initial.min_odd, max_odd: initial.max_odd, date_start: initial.date_start, date_end: initial.date_end, stake: initial.stake, perf: initial.perf ?? defaultPerf() }
+      ? { name: initial.name, market: initial.market, min_odd: initial.min_odd, max_odd: initial.max_odd, date_start: initial.date_start, date_end: initial.date_end, time_start: initial.time_start ?? '00:00', time_end: initial.time_end ?? '23:59', stake: initial.stake, perf: initial.perf ?? defaultPerf() }
       : DEFAULT_FORM
   );
   const [showPerf, setShowPerf] = useState(countActivePerf(form.perf) > 0);
@@ -292,6 +297,18 @@ const StrategyModal: React.FC<{
             <div>
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Data Fim</label>
               <input type="date" value={form.date_end} onChange={e => set('date_end', e.target.value)} className="w-full bg-background-dark border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-white focus:ring-primary" />
+            </div>
+          </div>
+
+          {/* Horários */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Hora Início</label>
+              <input type="time" value={form.time_start} onChange={e => set('time_start', e.target.value)} className="w-full bg-background-dark border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-white focus:ring-primary" />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5 block">Hora Fim</label>
+              <input type="time" value={form.time_end} onChange={e => set('time_end', e.target.value)} className="w-full bg-background-dark border border-border-subtle rounded-lg px-4 py-2.5 text-sm text-white focus:ring-primary" />
             </div>
           </div>
 

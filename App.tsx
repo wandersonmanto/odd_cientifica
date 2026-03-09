@@ -5,6 +5,7 @@ import Simulator from './pages/Simulator';
 import ImportData from './pages/ImportData';
 import Strategies from './pages/Strategies';
 import GameList from './pages/GameList';
+import CompoundOdds from './pages/CompoundOdds';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -35,6 +36,7 @@ const Header: React.FC = () => {
           <Link to="/games" className={getLinkClass('/games')}>Lista de Jogos</Link>
           <Link to="/simulator" className={getLinkClass('/simulator')}>Simulador</Link>
           <Link to="/strategies" className={getLinkClass('/strategies')}>Estratégias</Link>
+          <Link to="/compound" className={getLinkClass('/compound')}>Juros Compostos</Link>
         </nav>
 
         <div className="flex items-center gap-4">
@@ -76,6 +78,7 @@ const App: React.FC = () => {
             <Route path="/simulator" element={<Simulator />} />
             <Route path="/import" element={<ImportData />} />
             <Route path="/strategies" element={<Strategies />} />
+            <Route path="/compound" element={<CompoundOdds />} />
           </Routes>
         </main>
         

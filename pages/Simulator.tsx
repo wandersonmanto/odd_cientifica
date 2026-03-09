@@ -126,6 +126,7 @@ const Simulator: React.FC = () => {
         case 'over_15': oddToCheck = game.odd_over15; break;
         case 'over_25': oddToCheck = game.odd_over25; break;
         case 'under_35': oddToCheck = game.odd_under35; break;
+        case 'under_45': oddToCheck = game.odd_under45; break;
         case 'btts_yes': oddToCheck = game.odd_btts_yes; break;
       }
       if (!oddToCheck || oddToCheck < minOdd || oddToCheck > maxOdd) return false;
@@ -174,6 +175,7 @@ const Simulator: React.FC = () => {
       else if (market === 'over_15') { oddUsed = game.odd_over15; won = (game.home_score! + game.away_score!) > 1.5; }
       else if (market === 'over_25') { oddUsed = game.odd_over25; won = (game.home_score! + game.away_score!) > 2.5; }
       else if (market === 'under_35') { oddUsed = game.odd_under35; won = (game.home_score! + game.away_score!) < 3.5; }
+      else if (market === 'under_45') { oddUsed = game.odd_under45; won = (game.home_score! + game.away_score!) < 4.5; }
       else if (market === 'btts_yes') { oddUsed = game.odd_btts_yes; won = game.home_score! > 0 && game.away_score! > 0; }
 
       const pnl = won ? stake * (oddUsed - 1) : -stake;
@@ -293,6 +295,7 @@ const Simulator: React.FC = () => {
                 <option value="over_15">Over 1.5 FT</option>
                 <option value="over_25">Over 2.5 FT</option>
                 <option value="under_35">Under 3.5 FT</option>
+                <option value="under_45">Under 4.5 FT</option>
                 <option value="btts_yes">Ambas Marcam (Sim)</option>
               </select>
             </div>
@@ -594,6 +597,7 @@ const Simulator: React.FC = () => {
                         market === 'over_15' ? row.odd_over15 :
                         market === 'over_25' ? row.odd_over25 :
                         market === 'under_35' ? row.odd_under35 :
+                        market === 'under_45' ? row.odd_under45 :
                         row.odd_btts_yes)?.toFixed(2)}
                     </td>
                     {showStatsColumns && (

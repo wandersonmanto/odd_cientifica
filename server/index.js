@@ -389,6 +389,8 @@ app.post('/api/backtest', async (req, res) => {
     max_odd,
     date_start,
     date_end,
+    time_start,
+    time_end,
     stake = 100,
     // Performance filters
     rank_home_min, rank_home_max,
@@ -414,6 +416,7 @@ app.post('/api/backtest', async (req, res) => {
     over15:   { odd_col: 'odd_over15',    win_cond: '(home_score + away_score) > 1' },
     over25:   { odd_col: 'odd_over25',    win_cond: '(home_score + away_score) > 2' },
     under35:  { odd_col: 'odd_under35',   win_cond: '(home_score + away_score) < 4' },
+    under45:  { odd_col: 'odd_under45',   win_cond: '(home_score + away_score) < 5' },
     btts:     { odd_col: 'odd_btts_yes',  win_cond: 'home_score > 0 AND away_score > 0' },
   };
 
@@ -424,9 +427,11 @@ app.post('/api/backtest', async (req, res) => {
     const params = [];
     let filters = '';
 
-    // Date / odd filters
-    if (date_start) { filters += ' AND match_date >= ?'; params.push(date_start); }
-    if (date_end)   { filters += ' AND match_date <= ?'; params.push(date_end); }
+    // Date / time / odd filters
+    if (date_start)  { filters += ' AND match_date >= ?'; params.push(date_start); }
+    if (date_end)    { filters += ' AND match_date <= ?'; params.push(date_end); }
+    if (time_start)  { filters += ' AND match_time >= ?'; params.push(time_start); }
+    if (time_end)    { filters += ' AND match_time <= ?'; params.push(time_end); }
     if (min_odd != null) { filters += ` AND ${m.odd_col} >= ?`; params.push(parseFloat(min_odd)); }
     if (max_odd != null) { filters += ` AND ${m.odd_col} <= ?`; params.push(parseFloat(max_odd)); }
 
@@ -496,6 +501,137 @@ app.post('/api/backtest', async (req, res) => {
     });
   } catch (err) {
     console.error('[backtest] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+
+// ─── Análise de Odds para Estratégia de Juros Compostos ──────────────────────
+app.get('/api/stats/compound-odds', async (req, res) => {
+  const minOdd = parseFloat(req.query.min_odd || '1.29');
+  const maxOdd = parseFloat(req.query.max_odd || '1.39');
+
+  const oddCols = [
+    { col: 'odd_home',      label: 'Casa (1X2)',   win: 'home_score > away_score' },
+    { col: 'odd_away',      label: 'Fora (1X2)',   win: 'away_score > home_score' },
+    { col: 'odd_draw',      label: 'Empate (1X2)', win: 'home_score = away_score' },
+    { col: 'odd_over05',    label: 'Over 0.5',     win: '(home_score + away_score) > 0' },
+    { col: 'odd_over15',    label: 'Over 1.5',     win: '(home_score + away_score) > 1' },
+    { col: 'odd_over25',    label: 'Over 2.5',     win: '(home_score + away_score) > 2' },
+    { col: 'odd_under15',   label: 'Under 1.5',    win: '(home_score + away_score) < 2' },
+    { col: 'odd_under25',   label: 'Under 2.5',    win: '(home_score + away_score) < 3' },
+    { col: 'odd_under35',   label: 'Under 3.5',    win: '(home_score + away_score) < 4' },
+    { col: 'odd_under45',   label: 'Under 4.5',    win: '(home_score + away_score) < 5' },
+    { col: 'odd_over05_ht', label: 'Over 0.5 HT',  win: '(home_score_ht + away_score_ht) > 0' },
+    { col: 'odd_btts_yes',  label: 'BTTS Sim',     win: 'home_score > 0 AND away_score > 0' },
+    { col: 'odd_btts_no',   label: 'BTTS Nao',     win: 'NOT (home_score > 0 AND away_score > 0)' },
+  ];
+
+  try {
+    await pool.execute("SET SESSION sql_mode = 'NO_ENGINE_SUBSTITUTION'");
+
+    const [[totRow]] = await pool.execute(
+      "SELECT COUNT(*) AS total, SUM(status='FT') AS finished FROM games"
+    );
+
+    const markets = [];
+
+    for (const { col, label, win } of oddCols) {
+      const [rows] = await pool.execute(`
+        SELECT
+          ROUND(${col}, 2) AS odd_val,
+          COUNT(*) AS total,
+          SUM(CASE WHEN ${win} THEN 1 ELSE 0 END) AS wins
+        FROM games
+        WHERE status = 'FT'
+          AND home_score IS NOT NULL
+          AND ${col} >= ? AND ${col} <= ?
+        GROUP BY ROUND(${col}, 2)
+        ORDER BY total DESC
+        LIMIT 15
+      `, [minOdd, maxOdd]);
+
+      if (rows.length === 0) continue;
+
+      const totalInRange = rows.reduce((s, r) => s + Number(r.total), 0);
+      const totalWins    = rows.reduce((s, r) => s + Number(r.wins), 0);
+      const globalWinRate = totalInRange > 0 ? parseFloat((totalWins / totalInRange * 100).toFixed(2)) : 0;
+
+      let wSum = 0;
+      rows.forEach(r => { wSum += Number(r.odd_val) * Number(r.total); });
+      const avgOdd  = totalInRange > 0 ? parseFloat((wSum / totalInRange).toFixed(3)) : 0;
+      const breakeven = avgOdd > 0 ? parseFloat((1 / avgOdd * 100).toFixed(2)) : 100;
+
+      markets.push({
+        label,
+        col,
+        total_in_range: totalInRange,
+        avg_odd: avgOdd,
+        win_rate: globalWinRate,
+        breakeven,
+        is_lucrativo: globalWinRate > breakeven,
+        odds_distribution: rows.map(r => ({
+          odd: parseFloat(Number(r.odd_val).toFixed(2)),
+          count: Number(r.total),
+          wins: Number(r.wins),
+          win_rate: Number(r.total) > 0 ? parseFloat((Number(r.wins) / Number(r.total) * 100).toFixed(2)) : 0,
+        })),
+      });
+    }
+
+    markets.sort((a, b) => b.total_in_range - a.total_in_range);
+
+    // Top odds globais (união de todos os mercados)
+    const unions = oddCols.map(({ col, label, win }) =>
+      `SELECT ROUND(${col}, 2) AS odd_val, '${label.replace(/'/g, "''")}' AS mercado,
+       SUM(CASE WHEN ${win} THEN 1 ELSE 0 END) AS wins,
+       COUNT(*) AS total
+       FROM games
+       WHERE status='FT' AND home_score IS NOT NULL AND ${col} >= ${minOdd} AND ${col} <= ${maxOdd}
+       GROUP BY ROUND(${col}, 2)`
+    );
+    const [topRows] = await pool.execute(`
+      SELECT odd_val, mercado, SUM(wins) AS wins, SUM(total) AS total
+      FROM (${unions.join(' UNION ALL ')}) t
+      GROUP BY odd_val, mercado
+      ORDER BY total DESC
+      LIMIT 25
+    `);
+
+    const top_odds_global = topRows.map(r => ({
+      odd: parseFloat(Number(r.odd_val).toFixed(2)),
+      mercado: r.mercado,
+      total: Number(r.total),
+      wins: Number(r.wins),
+      win_rate: Number(r.total) > 0 ? parseFloat((Number(r.wins) / Number(r.total) * 100).toFixed(2)) : 0,
+    }));
+
+    // Matemática dos juros compostos
+    const compound_math = [];
+    const step = 0.01;
+    for (let avg = minOdd; avg <= maxOdd + 0.001; avg += step) {
+      const a = parseFloat(avg.toFixed(2));
+      const compound = parseFloat((a * a).toFixed(4));
+      compound_math.push({
+        avg_odd: a,
+        compound_odd: compound,
+        profit_pct: parseFloat(((compound - 1) * 100).toFixed(2)),
+        min_win_rate_single: parseFloat((1 / a * 100).toFixed(2)),
+        min_win_rate_both: parseFloat((1 / compound * 100).toFixed(2)),
+      });
+    }
+
+    res.json({
+      total_games: Number(totRow.total),
+      finished_games: Number(totRow.finished),
+      range: { min: minOdd, max: maxOdd },
+      markets,
+      top_odds_global,
+      compound_math,
+    });
+  } catch (err) {
+    console.error('[compound-odds] Erro:', err.message);
     res.status(500).json({ error: err.message });
   }
 });

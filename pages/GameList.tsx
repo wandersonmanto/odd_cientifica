@@ -13,6 +13,16 @@ const GameList: React.FC = () => {
   const [hideNoHome, setHideNoHome] = useState(false);
   const [hideNoOv15, setHideNoOv15] = useState(false);
   const [hideNoUn35, setHideNoUn35] = useState(false);
+  const [oddMin, setOddMin] = useState('');
+  const [oddMax, setOddMax] = useState('');
+
+  // All odd columns to check for range filter
+  const ODD_COLS: (keyof GameRecord)[] = [
+    'odd_home', 'odd_away', 'odd_draw',
+    'odd_over05', 'odd_over15', 'odd_over25',
+    'odd_under15', 'odd_under25', 'odd_under35', 'odd_under45',
+    'odd_over05_ht', 'odd_btts_yes', 'odd_btts_no',
+  ];
   
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -49,6 +59,22 @@ const GameList: React.FC = () => {
     setCurrentPage(1); // Reset page on date change
   }, [selectedDate, allGames]);
 
+  // Helper: check if a game has at least one odd within [min, max]
+  const gameMatchesOddRange = (g: GameRecord, min: number, max: number) =>
+    ODD_COLS.some(col => {
+      const v = g[col] as number | null;
+      return v !== null && v > 0 && v >= min && v <= max;
+    });
+
+  // Helper: check if a specific odd value is within the active range
+  const isOddHighlighted = (v: number | null | undefined): boolean => {
+    if (!oddMin && !oddMax) return false;
+    if (v === null || v === undefined || v <= 0) return false;
+    const mn = oddMin !== '' ? parseFloat(oddMin) : -Infinity;
+    const mx = oddMax !== '' ? parseFloat(oddMax) : Infinity;
+    return v >= mn && v <= mx;
+  };
+
   // Handle Sorting and Filtering
   const processedGames = useMemo(() => {
     let result = [...filteredGames];
@@ -66,12 +92,21 @@ const GameList: React.FC = () => {
       result = result.filter(g => g.odd_under35 !== null && g.odd_under35 > 0);
     }
 
+    // Odd range filter: keep games with at least one odd in [min, max]
+    const hasRange = oddMin !== '' || oddMax !== '';
+    if (hasRange) {
+      const mn = oddMin !== '' ? parseFloat(oddMin) : -Infinity;
+      const mx = oddMax !== '' ? parseFloat(oddMax) : Infinity;
+      if (!isNaN(mn) && !isNaN(mx)) {
+        result = result.filter(g => gameMatchesOddRange(g, mn, mx));
+      }
+    }
+
     if (sortConfig.direction && sortConfig.key) {
       result.sort((a, b) => {
         const aVal = a[sortConfig.key] as any;
         const bVal = b[sortConfig.key] as any;
 
-        // Push nulls/undefined to the end regardless of sort direction, or handle as 0
         if (aVal === null || aVal === undefined) return 1;
         if (bVal === null || bVal === undefined) return -1;
 
@@ -80,12 +115,11 @@ const GameList: React.FC = () => {
         return 0;
       });
     } else {
-       // Default sort by time
        result.sort((a, b) => a.match_time.localeCompare(b.match_time));
     }
 
     return result;
-  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, sortConfig]);
+  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, sortConfig]);
 
   // Handle Pagination
   const totalPages = Math.ceil(processedGames.length / gamesPerPage) || 1;
@@ -96,7 +130,7 @@ const GameList: React.FC = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, sortConfig]);
+  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, sortConfig]);
 
   const handleSort = (key: keyof GameRecord) => {
     let direction: 'asc' | 'desc' | null = 'asc';
@@ -123,52 +157,75 @@ const GameList: React.FC = () => {
             <h2 className="text-xl font-bold text-white tracking-tight">Lista de Jogos</h2>
             <p className="text-slate-400 text-xs mt-1">Visualização completa da base de dados por dia.</p>
         </div>
-        <div className="flex flex-col md:flex-row items-end gap-4 w-full md:w-auto">
+        <div className="flex flex-col md:flex-row items-end gap-4 w-full md:w-auto flex-wrap">
+            {/* Checkbox filters */}
             <div className="flex flex-col gap-2 bg-background-dark border border-border-subtle rounded-lg p-3 w-full md:w-auto">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ocultar sem:</span>
                 <div className="flex flex-wrap items-center gap-3">
                     <label className="flex items-center cursor-pointer gap-1.5">
-                        <input 
-                            type="checkbox" 
-                            checked={hideUnplayed}
-                            onChange={(e) => setHideUnplayed(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary"
-                        />
+                        <input type="checkbox" checked={hideUnplayed} onChange={(e) => setHideUnplayed(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary" />
                         <span className="text-xs text-slate-300 font-medium whitespace-nowrap">Placar</span>
                     </label>
                     <label className="flex items-center cursor-pointer gap-1.5">
-                        <input 
-                            type="checkbox" 
-                            checked={hideNoHome}
-                            onChange={(e) => setHideNoHome(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary"
-                        />
+                        <input type="checkbox" checked={hideNoHome} onChange={(e) => setHideNoHome(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary" />
                         <span className="text-xs text-slate-300 font-medium whitespace-nowrap">Home</span>
                     </label>
                     <label className="flex items-center cursor-pointer gap-1.5">
-                        <input 
-                            type="checkbox" 
-                            checked={hideNoOv15}
-                            onChange={(e) => setHideNoOv15(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary"
-                        />
+                        <input type="checkbox" checked={hideNoOv15} onChange={(e) => setHideNoOv15(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary" />
                         <span className="text-xs text-slate-300 font-medium whitespace-nowrap">Ov 1.5</span>
                     </label>
                     <label className="flex items-center cursor-pointer gap-1.5">
-                        <input 
-                            type="checkbox" 
-                            checked={hideNoUn35}
-                            onChange={(e) => setHideNoUn35(e.target.checked)}
-                            className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary"
-                        />
+                        <input type="checkbox" checked={hideNoUn35} onChange={(e) => setHideNoUn35(e.target.checked)} className="w-3.5 h-3.5 rounded border-slate-600 bg-slate-700 text-primary focus:ring-primary" />
                         <span className="text-xs text-slate-300 font-medium whitespace-nowrap">Un 3.5</span>
                     </label>
                 </div>
             </div>
+
+            {/* Odd Range Filter */}
+            <div className={`flex flex-col gap-2 rounded-lg p-3 border transition-colors w-full md:w-auto ${
+              oddMin !== '' || oddMax !== ''
+                ? 'bg-primary/5 border-primary/40'
+                : 'bg-background-dark border-border-subtle'
+            }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Filtrar por Odd</span>
+                  {(oddMin !== '' || oddMax !== '') && (
+                    <button
+                      onClick={() => { setOddMin(''); setOddMax(''); }}
+                      className="ml-auto text-[9px] text-primary hover:text-white font-bold uppercase tracking-wider transition-colors"
+                    >
+                      ✕ Limpar
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <label className="text-[9px] text-slate-600 uppercase block mb-0.5">Mín</label>
+                    <input
+                      type="number" step="0.01" min="1.01" placeholder="1.29"
+                      value={oddMin}
+                      onChange={e => setOddMin(e.target.value)}
+                      className="w-20 bg-surface border border-border-subtle rounded px-2 py-1.5 text-xs text-white font-mono focus:ring-1 focus:ring-primary focus:border-primary placeholder-slate-700"
+                    />
+                  </div>
+                  <span className="text-slate-600 mt-4 text-sm">—</span>
+                  <div>
+                    <label className="text-[9px] text-slate-600 uppercase block mb-0.5">Máx</label>
+                    <input
+                      type="number" step="0.01" min="1.01" placeholder="1.39"
+                      value={oddMax}
+                      onChange={e => setOddMax(e.target.value)}
+                      className="w-20 bg-surface border border-border-subtle rounded px-2 py-1.5 text-xs text-white font-mono focus:ring-1 focus:ring-primary focus:border-primary placeholder-slate-700"
+                    />
+                  </div>
+                </div>
+            </div>
+
+            {/* Date picker */}
             <div className="w-full md:w-auto">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Data</label>
-                <input 
-                    type="date" 
+                <input
+                    type="date"
                     value={selectedDate}
                     onChange={(e) => setSelectedDate(e.target.value)}
                     className="bg-background-dark border border-border-subtle text-white text-xs rounded-lg focus:ring-primary focus:border-primary block w-full px-2.5 py-2 h-[38px]"
@@ -268,21 +325,21 @@ const GameList: React.FC = () => {
                                     {game.home_score_ht !== null ? `${game.home_score_ht}-${game.away_score_ht}` : '-'}
                                 </td>
 
-                                {/* Odds */}
-                                <td className="px-1 py-1.5 text-center font-mono text-primary border-l border-border-subtle bg-primary/5">{fmt(game.odd_home)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-primary bg-primary/5">{fmt(game.odd_draw)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-primary border-r border-border-subtle bg-primary/5">{fmt(game.odd_away)}</td>
-                                
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_over05_ht)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_over05)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_over15)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_over25)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_under15)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_under25)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_under35)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_under45)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_btts_yes)}</td>
-                                <td className="px-1 py-1.5 text-center font-mono text-slate-300">{fmt(game.odd_btts_no)}</td>
+                                {/* Odds — highlighted when within filter range */}
+                                <td className={`px-1 py-1.5 text-center font-mono border-l border-border-subtle bg-primary/5 ${isOddHighlighted(game.odd_home) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_home)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono bg-primary/5 ${isOddHighlighted(game.odd_draw) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_draw)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono border-r border-border-subtle bg-primary/5 ${isOddHighlighted(game.odd_away) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_away)}</td>
+
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over05_ht) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over05_ht)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over05) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over05)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over15) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over15)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over25) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over25)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under15) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under15)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under25) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under25)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under35) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under35)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under45) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under45)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_btts_yes) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_btts_yes)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_btts_no) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_btts_no)}</td>
 
                                 {/* Stats */}
                                 <td className="px-1 py-1.5 text-center font-mono text-slate-400 border-l border-border-subtle bg-slate-800/30">{fmt(game.efficiency_home)}</td>
