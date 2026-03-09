@@ -15,6 +15,8 @@ const GameList: React.FC = () => {
   const [hideNoUn35, setHideNoUn35] = useState(false);
   const [oddMin, setOddMin] = useState('');
   const [oddMax, setOddMax] = useState('');
+  const [timeFrom, setTimeFrom] = useState('');
+  const [timeTo, setTimeTo] = useState('');
 
   // All odd columns to check for range filter
   const ODD_COLS: (keyof GameRecord)[] = [
@@ -75,6 +77,14 @@ const GameList: React.FC = () => {
     return v >= mn && v <= mx;
   };
 
+  // Helper: check if match_time is within the active time range
+  const isTimeHighlighted = (t: string): boolean => {
+    if (!timeFrom && !timeTo) return false;
+    const from = timeFrom || '00:00';
+    const to   = timeTo   || '23:59';
+    return t >= from && t <= to;
+  };
+
   // Handle Sorting and Filtering
   const processedGames = useMemo(() => {
     let result = [...filteredGames];
@@ -102,6 +112,14 @@ const GameList: React.FC = () => {
       }
     }
 
+    // Time range filter
+    const hasTimeRange = timeFrom !== '' || timeTo !== '';
+    if (hasTimeRange) {
+      const from = timeFrom || '00:00';
+      const to   = timeTo   || '23:59';
+      result = result.filter(g => g.match_time >= from && g.match_time <= to);
+    }
+
     if (sortConfig.direction && sortConfig.key) {
       result.sort((a, b) => {
         const aVal = a[sortConfig.key] as any;
@@ -119,7 +137,7 @@ const GameList: React.FC = () => {
     }
 
     return result;
-  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, sortConfig]);
+  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig]);
 
   // Handle Pagination
   const totalPages = Math.ceil(processedGames.length / gamesPerPage) || 1;
@@ -130,7 +148,7 @@ const GameList: React.FC = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, sortConfig]);
+  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig]);
 
   const handleSort = (key: keyof GameRecord) => {
     let direction: 'asc' | 'desc' | null = 'asc';
@@ -221,6 +239,46 @@ const GameList: React.FC = () => {
                 </div>
             </div>
 
+            {/* Time Range Filter */}
+            <div className={`flex flex-col gap-2 rounded-lg p-3 border transition-colors w-full md:w-auto ${
+              timeFrom !== '' || timeTo !== ''
+                ? 'bg-cyan-500/5 border-cyan-500/40'
+                : 'bg-background-dark border-border-subtle'
+            }`}>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Filtrar por Hora</span>
+                  {(timeFrom !== '' || timeTo !== '') && (
+                    <button
+                      onClick={() => { setTimeFrom(''); setTimeTo(''); }}
+                      className="ml-auto text-[9px] text-cyan-400 hover:text-white font-bold uppercase tracking-wider transition-colors"
+                    >
+                      ✕ Limpar
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div>
+                    <label className="text-[9px] text-slate-600 uppercase block mb-0.5">De</label>
+                    <input
+                      type="time"
+                      value={timeFrom}
+                      onChange={e => setTimeFrom(e.target.value)}
+                      className="w-24 bg-surface border border-border-subtle rounded px-2 py-1.5 text-xs text-white font-mono focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 placeholder-slate-700"
+                    />
+                  </div>
+                  <span className="text-slate-600 mt-4 text-sm">—</span>
+                  <div>
+                    <label className="text-[9px] text-slate-600 uppercase block mb-0.5">Até</label>
+                    <input
+                      type="time"
+                      value={timeTo}
+                      onChange={e => setTimeTo(e.target.value)}
+                      className="w-24 bg-surface border border-border-subtle rounded px-2 py-1.5 text-xs text-white font-mono focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 placeholder-slate-700"
+                    />
+                  </div>
+                </div>
+            </div>
+
             {/* Date picker */}
             <div className="w-full md:w-auto">
                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Data</label>
@@ -239,7 +297,7 @@ const GameList: React.FC = () => {
             <table className="w-full text-left border-collapse whitespace-nowrap">
                 <thead className="bg-background-dark/50 text-[10px] uppercase text-slate-400 font-semibold tracking-wide">
                     <tr>
-                        <th className="px-2 py-2 border-b border-border-subtle sticky left-0 bg-surface z-10 min-w-[60px] max-w-[80px]">Hora</th>
+                        <th className="px-2 py-2 border-b border-border-subtle sticky left-0 bg-surface z-10 min-w-[60px] max-w-[80px] cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('match_time')}>Hora {getSortIcon('match_time')}</th>
                         <th className="px-2 py-2 border-b border-border-subtle sticky left-[60px] bg-surface z-10 min-w-[200px]">Partida</th>
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[120px]">Liga</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Status</th>
@@ -256,7 +314,7 @@ const GameList: React.FC = () => {
                         <th className="px-1 py-2 border-b border-border-subtle bg-primary/5 text-primary text-center">Draw</th>
                         <th className="px-1 py-2 border-b border-border-subtle bg-primary/5 text-primary text-center border-r border-border-subtle">Away</th>
                         
-                        <th className="px-1 py-2 border-b border-border-subtle text-center">0.5 HT</th>
+                        <th className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('odd_over05_ht')}>0.5 HT {getSortIcon('odd_over05_ht')}</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Ov 0.5</th>
                         <th 
                            className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors"
@@ -273,15 +331,15 @@ const GameList: React.FC = () => {
                         >
                            Un 3.5 {getSortIcon('odd_under35')}
                         </th>
-                        <th className="px-1 py-2 border-b border-border-subtle text-center">Un 4.5</th>
+                        <th className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('odd_under45')}>Un 4.5 {getSortIcon('odd_under45')}</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">BTTS Y</th>
-                        <th className="px-1 py-2 border-b border-border-subtle text-center">BTTS N</th>
+                        <th className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('odd_btts_no')}>BTTS N {getSortIcon('odd_btts_no')}</th>
 
                         {/* Stats Section */}
-                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center border-l border-border-subtle">Eff H</th>
-                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center">Eff A</th>
-                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center">Rnk H</th>
-                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center border-r border-border-subtle">Rnk A</th>
+                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center border-l border-border-subtle cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('efficiency_home')}>Eff H {getSortIcon('efficiency_home')}</th>
+                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('efficiency_away')}>Eff A {getSortIcon('efficiency_away')}</th>
+                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('rank_home')}>Rnk H {getSortIcon('rank_home')}</th>
+                        <th className="px-1 py-2 border-b border-border-subtle bg-slate-800/30 text-center border-r border-border-subtle cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('rank_away')}>Rnk A {getSortIcon('rank_away')}</th>
 
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Win% H</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Win% A</th>
@@ -310,7 +368,11 @@ const GameList: React.FC = () => {
                     ) : (
                         paginatedGames.map((game) => (
                             <tr key={game.id} className="hover:bg-white/5 transition-colors">
-                                <td className="px-2 py-1.5 sticky left-0 bg-surface z-10 border-r border-border-subtle font-mono text-slate-400">
+                                <td className={`px-2 py-1.5 sticky left-0 bg-surface z-10 border-r border-border-subtle font-mono ${
+                                    isTimeHighlighted(game.match_time)
+                                      ? 'text-cyan-300 font-bold'
+                                      : 'text-slate-400'
+                                  }`}>
                                     {game.match_time}
                                 </td>
                                 <td className="px-2 py-1.5 sticky left-[60px] bg-surface z-10 border-r border-border-subtle font-medium text-white truncate max-w-[250px]" title={`${game.home_team} vs ${game.away_team}`}>
