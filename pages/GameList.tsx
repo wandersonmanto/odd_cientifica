@@ -1,13 +1,39 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkCheck, X } from 'lucide-react';
 import { GameRecord } from '../types';
 import { getAllGames } from '../src/db/gameRepository';
+
+const API = 'http://localhost:3001';
+
+const MARKET_OPTIONS = [
+  { value: 'home',     label: 'Match Odds — Casa',      oddKey: 'odd_home' },
+  { value: 'away',     label: 'Match Odds — Visitante', oddKey: 'odd_away' },
+  { value: 'over05ht', label: 'Over 0.5 HT',            oddKey: 'odd_over05_ht' },
+  { value: 'over15',   label: 'Over 1.5 FT',            oddKey: 'odd_over15' },
+  { value: 'over25',   label: 'Over 2.5 FT',            oddKey: 'odd_over25' },
+  { value: 'under35',  label: 'Under 3.5 FT',           oddKey: 'odd_under35' },
+  { value: 'under45',  label: 'Under 4.5 FT',           oddKey: 'odd_under45' },
+  { value: 'btts',     label: 'Ambas Marcam (Sim)',      oddKey: 'odd_btts_yes' },
+] as const;
+
+type MarketValue = typeof MARKET_OPTIONS[number]['value'];
+
+interface SavedPickKey {
+  game_id: string;
+  market: MarketValue;
+}
+
+interface PickPopoverState {
+  gameId: string;
+  market: MarketValue;
+  saving: boolean;
+}
 
 const GameList: React.FC = () => {
   const [allGames, setAllGames] = useState<GameRecord[]>([]);
   const [filteredGames, setFilteredGames] = useState<GameRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
-  
+
   // Filters State
   const [hideUnplayed, setHideUnplayed] = useState(false);
   const [hideNoHome, setHideNoHome] = useState(false);
@@ -25,13 +51,19 @@ const GameList: React.FC = () => {
     'odd_under15', 'odd_under25', 'odd_under35', 'odd_under45',
     'odd_over05_ht', 'odd_btts_yes', 'odd_btts_no',
   ];
-  
+
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
   const gamesPerPage = 50;
 
   // Sorting State
   const [sortConfig, setSortConfig] = useState<{ key: keyof GameRecord | '', direction: 'asc' | 'desc' | null }>({ key: '', direction: null });
+
+  // Pick saving state
+  const [savedPickKeys, setSavedPickKeys] = useState<SavedPickKey[]>([]);
+  const [popover, setPopover] = useState<PickPopoverState | null>(null);
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -53,13 +85,110 @@ const GameList: React.FC = () => {
 
   useEffect(() => {
     if (selectedDate) {
-        const filtered = allGames.filter(g => g.match_date === selectedDate);
-        setFilteredGames(filtered);
+      const filtered = allGames.filter(g => g.match_date === selectedDate);
+      setFilteredGames(filtered);
+      fetchSavedPicksForDate(selectedDate);
     } else {
-        setFilteredGames([]);
+      setFilteredGames([]);
     }
-    setCurrentPage(1); // Reset page on date change
+    setCurrentPage(1);
   }, [selectedDate, allGames]);
+
+  // Close popover on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setPopover(null);
+      }
+    };
+    if (popover) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [popover]);
+
+  const fetchSavedPicksForDate = async (date: string) => {
+    try {
+      const res = await fetch(`${API}/api/picks?date=${date}`);
+      if (res.ok) {
+        const picks = await res.json();
+        setSavedPickKeys(picks.map((p: any) => ({ game_id: p.game_id, market: p.market })));
+      }
+    } catch { /* server offline */ }
+  };
+
+  const showToast = (msg: string, ok = true) => {
+    setToast({ msg, ok });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const isPickSaved = (gameId: string, market?: MarketValue): boolean => {
+    if (market) return savedPickKeys.some(p => p.game_id === gameId && p.market === market);
+    return savedPickKeys.some(p => p.game_id === gameId);
+  };
+
+  const openPopover = (gameId: string) => {
+    // If already open for same game, close it
+    if (popover?.gameId === gameId) {
+      setPopover(null);
+      return;
+    }
+    // Default market: first one with a valid odd
+    const game = allGames.find(g => g.id === gameId);
+    let defaultMarket: MarketValue = 'over15';
+    if (game) {
+      const first = MARKET_OPTIONS.find(m => {
+        const v = game[m.oddKey as keyof GameRecord] as number;
+        return v && v > 0;
+      });
+      if (first) defaultMarket = first.value;
+    }
+    setPopover({ gameId, market: defaultMarket, saving: false });
+  };
+
+  const handleSavePick = async () => {
+    if (!popover) return;
+    const game = allGames.find(g => g.id === popover.gameId);
+    if (!game) return;
+
+    const marketObj = MARKET_OPTIONS.find(o => o.value === popover.market)!;
+    const oddVal = game[marketObj.oddKey as keyof GameRecord] as number;
+
+    if (!oddVal || oddVal <= 0) {
+      showToast('⚠️ Odd não disponível para este mercado.', false);
+      return;
+    }
+
+    setPopover(prev => prev ? { ...prev, saving: true } : null);
+
+    try {
+      const res = await fetch(`${API}/api/picks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify([{
+          game_id: game.id,
+          pick_date: selectedDate,
+          market: popover.market,
+          odd_used: oddVal,
+          home_team: game.home_team,
+          away_team: game.away_team,
+          league: game.league,
+          country: game.country,
+          match_time: game.match_time,
+        }]),
+      });
+      const data = await res.json();
+      const skipped = data.inserted?.some((i: any) => i.skipped);
+      if (skipped) {
+        showToast('ℹ️ Pick já estava salvo.', true);
+      } else {
+        showToast(`✅ Pick salvo: ${game.home_team} vs ${game.away_team}`);
+        setSavedPickKeys(prev => [...prev, { game_id: game.id, market: popover.market }]);
+      }
+    } catch {
+      showToast('❌ Erro ao conectar ao servidor.', false);
+    } finally {
+      setPopover(null);
+    }
+  };
 
   // Helper: check if a game has at least one odd within [min, max]
   const gameMatchesOddRange = (g: GameRecord, min: number, max: number) =>
@@ -168,12 +297,29 @@ const GameList: React.FC = () => {
   // Helper to format numbers
   const fmt = (val: number | null | undefined) => val !== null && val !== undefined ? val.toFixed(2) : '-';
 
+  const savedCount = savedPickKeys.filter(p =>
+    paginatedGames.some(g => g.id === p.game_id)
+  ).length;
+
   return (
     <div className="space-y-6">
+      {/* Toast */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm font-semibold shadow-xl transition-all ${toast.ok ? 'bg-primary/20 border border-primary/50 text-primary' : 'bg-red-500/20 border border-red-500/50 text-red-400'}`}>
+          {toast.msg}
+        </div>
+      )}
+
       <div className="flex flex-col md:flex-row justify-between items-end gap-4 bg-surface p-4 rounded-xl border border-border-subtle shadow-lg">
         <div>
             <h2 className="text-xl font-bold text-white tracking-tight">Lista de Jogos</h2>
             <p className="text-slate-400 text-xs mt-1">Visualização completa da base de dados por dia.</p>
+            {savedCount > 0 && (
+              <p className="text-[10px] text-amber-400 mt-1 flex items-center gap-1">
+                <BookmarkCheck className="w-3 h-3" />
+                {savedCount} pick{savedCount !== 1 ? 's' : ''} salvo{savedCount !== 1 ? 's' : ''} visível{savedCount !== 1 ? 'is' : ''} nesta página
+              </p>
+            )}
         </div>
         <div className="flex flex-col md:flex-row items-end gap-4 w-full md:w-auto flex-wrap">
             {/* Checkbox filters */}
@@ -297,8 +443,12 @@ const GameList: React.FC = () => {
             <table className="w-full text-left border-collapse whitespace-nowrap">
                 <thead className="bg-background-dark/50 text-[10px] uppercase text-slate-400 font-semibold tracking-wide">
                     <tr>
-                        <th className="px-2 py-2 border-b border-border-subtle sticky left-0 bg-surface z-10 min-w-[60px] max-w-[80px] cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('match_time')}>Hora {getSortIcon('match_time')}</th>
-                        <th className="px-2 py-2 border-b border-border-subtle sticky left-[60px] bg-surface z-10 min-w-[200px]">Partida</th>
+                        {/* Pick column */}
+                        <th className="px-2 py-2 border-b border-border-subtle text-center w-8 sticky left-0 bg-surface z-10">
+                          <BookmarkCheck className="w-3 h-3 inline text-amber-400/60" />
+                        </th>
+                        <th className="px-2 py-2 border-b border-border-subtle sticky left-8 bg-surface z-10 min-w-[60px] max-w-[80px] cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('match_time')}>Hora {getSortIcon('match_time')}</th>
+                        <th className="px-2 py-2 border-b border-border-subtle min-w-[200px]">Partida</th>
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[120px]">Liga</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Status</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">FT</th>
@@ -363,19 +513,114 @@ const GameList: React.FC = () => {
                 <tbody className="divide-y divide-border-subtle text-[11px]">
                     {paginatedGames.length === 0 ? (
                         <tr>
-                            <td colSpan={30} className="p-8 text-center text-slate-500">Nenhum jogo encontrado para estes filtros.</td>
+                            <td colSpan={38} className="p-8 text-center text-slate-500">Nenhum jogo encontrado para estes filtros.</td>
                         </tr>
                     ) : (
-                        paginatedGames.map((game) => (
-                            <tr key={game.id} className="hover:bg-white/5 transition-colors">
-                                <td className={`px-2 py-1.5 sticky left-0 bg-surface z-10 border-r border-border-subtle font-mono ${
+                        paginatedGames.map((game) => {
+                          const alreadySaved = isPickSaved(game.id);
+                          const isPopoverOpen = popover?.gameId === game.id;
+                          return (
+                            <tr key={game.id} className={`hover:bg-white/5 transition-colors relative ${alreadySaved ? 'bg-amber-400/5' : ''}`}>
+                                {/* Bookmark button cell */}
+                                <td className="px-1 py-1.5 text-center sticky left-0 bg-inherit z-20">
+                                  <div className="relative inline-block">
+                                    <button
+                                      onClick={() => openPopover(game.id)}
+                                      title={alreadySaved ? 'Pick já salvo (clique para adicionar outro mercado)' : 'Salvar como pick'}
+                                      className={`p-0.5 rounded transition-all hover:scale-110 ${
+                                        alreadySaved
+                                          ? 'text-amber-400'
+                                          : 'text-slate-600 hover:text-amber-400'
+                                      }`}
+                                    >
+                                      {alreadySaved
+                                        ? <BookmarkCheck className="w-3.5 h-3.5" />
+                                        : <Bookmark className="w-3.5 h-3.5" />
+                                      }
+                                    </button>
+
+                                    {/* Popover */}
+                                    {isPopoverOpen && (
+                                      <div
+                                        ref={popoverRef}
+                                        className="absolute left-6 top-0 z-50 bg-surface border border-border-subtle rounded-xl shadow-2xl p-4 w-64"
+                                        style={{ minWidth: '256px' }}
+                                      >
+                                        <div className="flex items-center justify-between mb-3">
+                                          <span className="text-xs font-bold text-white">Salvar Pick</span>
+                                          <button onClick={() => setPopover(null)} className="text-slate-500 hover:text-white">
+                                            <X className="w-3.5 h-3.5" />
+                                          </button>
+                                        </div>
+                                        <p className="text-[10px] text-slate-400 mb-3 leading-relaxed">
+                                          {game.home_team} <span className="text-slate-600">v</span> {game.away_team}
+                                        </p>
+                                        <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
+                                          Mercado
+                                        </label>
+                                        <select
+                                          value={popover.market}
+                                          onChange={e => setPopover(prev => prev ? { ...prev, market: e.target.value as MarketValue } : null)}
+                                          className="w-full bg-background-dark border border-border-subtle rounded-lg text-xs text-white focus:ring-primary focus:border-primary px-3 h-9 appearance-none mb-3"
+                                        >
+                                          {MARKET_OPTIONS.map(o => {
+                                            const oddVal = game[o.oddKey as keyof GameRecord] as number;
+                                            const hasOdd = oddVal && oddVal > 0;
+                                            return (
+                                              <option key={o.value} value={o.value} disabled={!hasOdd}>
+                                                {o.label}{hasOdd ? ` — ${oddVal.toFixed(2)}` : ' (sem odd)'}
+                                              </option>
+                                            );
+                                          })}
+                                        </select>
+
+                                        {/* Preview odd */}
+                                        {(() => {
+                                          const mObj = MARKET_OPTIONS.find(o => o.value === popover.market)!;
+                                          const oddVal = game[mObj.oddKey as keyof GameRecord] as number;
+                                          return oddVal && oddVal > 0 ? (
+                                            <div className="flex items-center justify-between mb-3 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                                              <span className="text-[10px] text-slate-400">Odd selecionada</span>
+                                              <span className="text-sm font-bold font-mono text-primary">{oddVal.toFixed(2)}</span>
+                                            </div>
+                                          ) : (
+                                            <div className="mb-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-[10px] text-red-400">
+                                              ⚠️ Odd não disponível
+                                            </div>
+                                          );
+                                        })()}
+
+                                        {isPickSaved(game.id, popover.market) && (
+                                          <div className="mb-2 text-[10px] text-amber-400 flex items-center gap-1">
+                                            <BookmarkCheck className="w-3 h-3" />
+                                            Já salvo para este mercado
+                                          </div>
+                                        )}
+
+                                        <button
+                                          onClick={handleSavePick}
+                                          disabled={popover.saving}
+                                          className="w-full h-9 bg-primary text-background-dark font-bold text-xs rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(36,255,189,0.2)]"
+                                        >
+                                          {popover.saving ? (
+                                            <>Salvando…</>
+                                          ) : (
+                                            <><BookmarkCheck className="w-3.5 h-3.5" /> Salvar Pick</>
+                                          )}
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+
+                                <td className={`px-2 py-1.5 sticky left-8 bg-surface z-10 border-r border-border-subtle font-mono ${
                                     isTimeHighlighted(game.match_time)
                                       ? 'text-cyan-300 font-bold'
                                       : 'text-slate-400'
                                   }`}>
                                     {game.match_time}
                                 </td>
-                                <td className="px-2 py-1.5 sticky left-[60px] bg-surface z-10 border-r border-border-subtle font-medium text-white truncate max-w-[250px]" title={`${game.home_team} vs ${game.away_team}`}>
+                                <td className="px-2 py-1.5 font-medium text-white truncate max-w-[200px]" title={`${game.home_team} vs ${game.away_team}`}>
                                     {game.home_team} <span className="text-slate-500 mx-0.5">v</span> {game.away_team}
                                 </td>
                                 <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]" title={`${game.country} - ${game.league}`}>{game.country} - {game.league}</td>
@@ -427,7 +672,8 @@ const GameList: React.FC = () => {
                                 <td className="px-1 py-1.5 text-center font-mono text-slate-400 border-l border-border-subtle">{fmt(game.global_goals_match)}</td>
                                 <td className="px-1 py-1.5 text-center font-mono text-slate-400">{fmt(game.global_goals_league)}</td>
                             </tr>
-                        ))
+                          );
+                        })
                     )}
                 </tbody>
             </table>
