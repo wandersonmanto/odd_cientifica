@@ -31,6 +31,12 @@ interface DailyPick {
   country: string;
   match_time: string;
   created_at: string;
+  // Placar via JOIN com games
+  home_score: number | null;
+  away_score: number | null;
+  home_score_ht: number | null;
+  away_score_ht: number | null;
+  game_status: string | null;
 }
 
 const marketLabel = (m: string) =>
@@ -383,6 +389,8 @@ const DaySelection: React.FC = () => {
                   <th className="px-3 py-2 border-b border-border-subtle">Liga</th>
                   <th className="px-3 py-2 border-b border-border-subtle text-center">Mercado</th>
                   <th className="px-3 py-2 border-b border-border-subtle text-center text-primary">Odd</th>
+                  <th className="px-3 py-2 border-b border-border-subtle text-center text-slate-400">HT</th>
+                  <th className="px-3 py-2 border-b border-border-subtle text-center text-slate-400">FT</th>
                   <th className="px-3 py-2 border-b border-border-subtle text-center">Resultado</th>
                   <th className="px-3 py-2 border-b border-border-subtle text-center">Ações</th>
                 </tr>
@@ -399,6 +407,22 @@ const DaySelection: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-3 py-2 text-center font-mono font-bold text-primary">{fmt2(p.odd_used)}</td>
+                    {/* Placar HT */}
+                    <td className="px-3 py-2 text-center font-mono text-slate-400">
+                      {p.home_score_ht !== null && p.away_score_ht !== null
+                        ? `${p.home_score_ht}–${p.away_score_ht}`
+                        : <span className="text-slate-700">—</span>}
+                    </td>
+                    {/* Placar FT */}
+                    <td className="px-3 py-2 text-center font-mono font-bold">
+                      {p.home_score !== null && p.away_score !== null ? (
+                        <span className={p.result === 1 ? 'text-primary' : p.result === 0 ? 'text-red-400' : 'text-white'}>
+                          {p.home_score}–{p.away_score}
+                        </span>
+                      ) : (
+                        <span className="text-slate-700">—</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-center">
                       {p.resolved ? (
                         <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${p.result ? 'bg-primary/15 text-primary' : 'bg-red-500/15 text-red-400'}`}>

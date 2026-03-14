@@ -268,10 +268,20 @@ app.get('/api/picks', async (req, res) => {
     const { date } = req.query;
     const params = [];
     let where = '';
-    if (date) { where = 'WHERE pick_date = ?'; params.push(date); }
+    if (date) { where = 'WHERE dp.pick_date = ?'; params.push(date); }
 
     const [rows] = await pool.execute(
-      `SELECT * FROM daily_picks ${where} ORDER BY match_time ASC, created_at ASC`,
+      `SELECT
+         dp.*,
+         g.home_score,
+         g.away_score,
+         g.home_score_ht,
+         g.away_score_ht,
+         g.status AS game_status
+       FROM daily_picks dp
+       LEFT JOIN games g ON g.id = dp.game_id
+       ${where}
+       ORDER BY dp.match_time ASC, dp.created_at ASC`,
       params
     );
     res.json(rows);
