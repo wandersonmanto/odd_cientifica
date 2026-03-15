@@ -65,6 +65,11 @@ const DaySelection: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
 
+  // Image generation state
+  const [genLoading, setGenLoading] = useState(false);
+  const [genFiles, setGenFiles] = useState<{ type: string; filename: string; url: string }[]>([]);
+  const [genError, setGenError] = useState<string | null>(null);
+
   // Load games from local SQLite OPFS
   useEffect(() => {
     getAllGames().then(setAllGames).catch(console.error);
@@ -468,6 +473,116 @@ const DaySelection: React.FC = () => {
           );
         })()}
       </div>
+
+      {/* ── Gerar Posts ─────────────────────────────────────────── */}
+      {todayPicks.length > 0 && (
+        <div className="bg-surface border border-border-subtle rounded-xl shadow-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-white">📸 Gerar Posts para Redes Sociais</h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">Cria imagens PNG prontas para Feed, Story, Resultado e Capa de Reel — {pickDate}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'feed',      label: '📋 Feed',     dim: '1080×1350' },
+                { key: 'story',     label: '📱 Story',    dim: '1080×1920' },
+                { key: 'resultado', label: '🏆 Resultado', dim: '1080×1350' },
+                { key: 'reel',      label: '🎬 Reel Capa', dim: '1080×1920' },
+              ].map(({ key, label, dim }) => {
+                const file = genFiles.find(f => f.type === key);
+                return (
+                  <button
+                    key={key}
+                    onClick={async () => {
+                      setGenLoading(true);
+                      setGenError(null);
+                      try {
+                        const res = await fetch(`${API}/api/generate-images`, {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ date: pickDate, types: [key] }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || 'Erro desconhecido');
+                        setGenFiles(prev => [
+                          ...prev.filter(f => f.type !== key),
+                          ...data.files,
+                        ]);
+                      } catch (e: any) {
+                        setGenError(e.message);
+                      } finally {
+                        setGenLoading(false);
+                      }
+                    }}
+                    disabled={genLoading}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-50 border ${
+                      file
+                        ? 'bg-primary/10 border-primary/40 text-primary'
+                        : 'bg-background-dark border-border-subtle text-slate-300 hover:border-primary/30 hover:text-primary'
+                    }`}
+                  >
+                    <span>{label}</span>
+                    <span className="text-[9px] text-slate-600 font-normal">{dim}</span>
+                    {file && <span className="text-[9px] text-primary">✓</span>}
+                  </button>
+                );
+              })}
+              {genLoading && (
+                <div className="flex items-center gap-1.5 text-xs text-slate-500 px-2">
+                  <span className="animate-spin inline-block w-3 h-3 border border-primary/50 border-t-primary rounded-full"></span>
+                  Renderizando…
+                </div>
+              )}
+            </div>
+          </div>
+
+          {genError && (
+            <div className="px-5 py-3 text-xs text-red-400 bg-red-500/5 border-b border-red-500/20">
+              ❌ {genError}
+            </div>
+          )}
+
+          {genFiles.length > 0 && (
+            <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+              {genFiles.map(f => {
+                const imgUrl = `${API}${f.url}?t=${Date.now()}`;
+                const typeLabels: Record<string, string> = {
+                  feed: 'Feed Instagram',
+                  story: 'Story',
+                  resultado: 'Resultado',
+                  reel: 'Capa de Reel',
+                };
+                return (
+                  <div key={f.type} className="flex flex-col gap-2">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{typeLabels[f.type] || f.type}</div>
+                    <a
+                      href={imgUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-xl overflow-hidden border border-border-subtle hover:border-primary/40 transition-all group"
+                    >
+                      <img
+                        src={imgUrl}
+                        alt={f.type}
+                        className="w-full object-cover group-hover:opacity-90 transition-opacity"
+                        style={{ aspectRatio: f.type === 'story' || f.type === 'reel' ? '9/16' : '4/5' }}
+                      />
+                    </a>
+                    <a
+                      href={imgUrl}
+                      download={f.filename}
+                      className="w-full text-center text-[10px] font-bold text-primary bg-primary/5 border border-primary/20 rounded-lg py-1.5 hover:bg-primary/10 transition-colors"
+                    >
+                      ⬇ Download PNG
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 };

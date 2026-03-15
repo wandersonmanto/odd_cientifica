@@ -8,6 +8,8 @@ require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
 const cors = require('cors');
 const mysql = require('mysql2/promise');
+const path  = require('path');
+const { generateImages } = require('./image-generator');
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001');
@@ -15,6 +17,7 @@ const PORT = parseInt(process.env.PORT || '3001');
 // ─── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
+app.use('/generated', express.static(path.join(__dirname, 'generated')));
 
 // ─── MySQL Connection Pool ─────────────────────────────────────────────────────
 const pool = mysql.createPool({
@@ -797,6 +800,56 @@ app.get('/api/stats/compound-odds', async (req, res) => {
     });
   } catch (err) {
     console.error('[compound-odds] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ─── Geração de Imagens para Redes Sociais ────────────────────────────────────
+
+/**
+ * POST /api/generate-images
+ * Body: { date: "2026-03-15", types: ["feed","story","resultado","reel"], logo_url?: string }
+ * Response: { files: [{ type, filename, url }] }
+ */
+app.post('/api/generate-images', async (req, res) => {
+  const { date, types, logo_url = '' } = req.body;
+
+  if (!date) return res.status(400).json({ error: 'Campo "date" obrigatório.' });
+
+  try {
+    // Busca picks do dia com placar via JOIN (mesmo endpoint GET /api/picks)
+    const [picks] = await pool.execute(
+      `SELECT
+         dp.*,
+         g.home_score, g.away_score,
+         g.home_score_ht, g.away_score_ht,
+         g.status AS game_status
+       FROM daily_picks dp
+       LEFT JOIN games g ON g.id = dp.game_id
+       WHERE dp.pick_date = ?
+       ORDER BY dp.match_time ASC`,
+      [date]
+    );
+
+    if (picks.length === 0) {
+      return res.status(404).json({ error: `Nenhum pick encontrado para ${date}.` });
+    }
+
+    const selectedTypes = Array.isArray(types) && types.length > 0
+      ? types
+      : ['feed', 'story', 'resultado', 'reel'];
+
+    const files = await generateImages({
+      date,
+      picks,
+      types: selectedTypes,
+      logoUrl: logo_url,
+    });
+
+    res.json({ success: true, date, files });
+  } catch (err) {
+    console.error('[generate-images] Erro:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
