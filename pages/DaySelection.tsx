@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameRecord } from '../types';
 import { getAllGames } from '../src/db/gameRepository';
+import GameAnalysisModal from '../components/GameAnalysisModal';
 
 const API = 'http://localhost:3001';
 
@@ -67,8 +68,11 @@ const DaySelection: React.FC = () => {
 
   // Image generation state
   const [genLoading, setGenLoading] = useState(false);
-  const [genFiles, setGenFiles] = useState<{ type: string; filename: string; url: string }[]>([]);
+  const [genFiles, setGenFiles] = useState<{ type: string; page: number; pageTotal: number; filename: string; url: string }[]>([]);
   const [genError, setGenError] = useState<string | null>(null);
+
+  // Modal de análise de partida
+  const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null);
 
   // Load games from local SQLite OPFS
   useEffect(() => {
@@ -201,6 +205,7 @@ const DaySelection: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <GameAnalysisModal game={analysisGame} onClose={() => setAnalysisGame(null)} />
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm font-semibold shadow-xl transition-all ${toast.ok ? 'bg-primary/20 border border-primary/50 text-primary' : 'bg-red-500/20 border border-red-500/50 text-red-400'}`}>
@@ -404,7 +409,16 @@ const DaySelection: React.FC = () => {
                 {todayPicks.map(p => (
                   <tr key={p.id} className="hover:bg-white/5 transition-colors">
                     <td className="px-3 py-2 font-mono text-slate-400">{p.match_time}</td>
-                    <td className="px-3 py-2 font-medium text-white">{p.home_team} <span className="text-slate-500">v</span> {p.away_team}</td>
+                    <td
+                      className="px-3 py-2 font-medium text-white cursor-pointer hover:text-primary hover:underline transition-colors"
+                      title="Clique para analisar a partida"
+                      onClick={() => {
+                        const found = allGames.find(g => g.id === p.game_id);
+                        if (found) setAnalysisGame(found);
+                      }}
+                    >
+                      {p.home_team} <span className="text-slate-500">v</span> {p.away_team}
+                    </td>
                     <td className="px-3 py-2 text-slate-400 max-w-[150px] truncate">{p.country} — {p.league}</td>
                     <td className="px-3 py-2 text-center">
                       <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-2 py-0.5 rounded-full font-semibold">
@@ -542,44 +556,66 @@ const DaySelection: React.FC = () => {
             </div>
           )}
 
-          {genFiles.length > 0 && (
-            <div className="p-5 grid grid-cols-2 md:grid-cols-4 gap-4">
-              {genFiles.map(f => {
-                const imgUrl = `${API}${f.url}?t=${Date.now()}`;
-                const typeLabels: Record<string, string> = {
-                  feed: 'Feed Instagram',
-                  story: 'Story',
-                  resultado: 'Resultado',
-                  reel: 'Capa de Reel',
-                };
-                return (
-                  <div key={f.type} className="flex flex-col gap-2">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{typeLabels[f.type] || f.type}</div>
-                    <a
-                      href={imgUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block rounded-xl overflow-hidden border border-border-subtle hover:border-primary/40 transition-all group"
-                    >
-                      <img
-                        src={imgUrl}
-                        alt={f.type}
-                        className="w-full object-cover group-hover:opacity-90 transition-opacity"
-                        style={{ aspectRatio: f.type === 'story' || f.type === 'reel' ? '9/16' : '4/5' }}
-                      />
-                    </a>
-                    <a
-                      href={imgUrl}
-                      download={f.filename}
-                      className="w-full text-center text-[10px] font-bold text-primary bg-primary/5 border border-primary/20 rounded-lg py-1.5 hover:bg-primary/10 transition-colors"
-                    >
-                      ⬇ Download PNG
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          {genFiles.length > 0 && (() => {
+            const typeLabels: Record<string, string> = {
+              feed: 'Feed Instagram',
+              story: 'Story',
+              resultado: 'Resultado',
+              reel: 'Capa de Reel',
+            };
+            // Agrupa por tipo mantendo ordem de geração
+            const types = Array.from(new Set<string>(genFiles.map(f => f.type)));
+            return (
+              <div className="p-5 space-y-5">
+                {types.map(t => {
+                  const files = genFiles.filter(f => f.type === t);
+                  const isVertical = t === 'story' || t === 'reel';
+                  return (
+                    <div key={t}>
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3">
+                        {typeLabels[t] || t}
+                        {files[0]?.pageTotal > 1 && (
+                          <span className="ml-2 text-slate-600 normal-case font-normal">{files.length} parte{files.length > 1 ? 's' : ''}</span>
+                        )}
+                      </div>
+                      <div className={`grid gap-3 ${isVertical ? 'grid-cols-3 md:grid-cols-4' : 'grid-cols-2 md:grid-cols-4'}`}>
+                        {files.map(f => {
+                          const imgUrl = `${API}${f.url}?t=${Date.now()}`;
+                          return (
+                            <div key={f.filename} className="flex flex-col gap-1.5">
+                              {f.pageTotal > 1 && (
+                                <div className="text-[9px] text-slate-600 font-semibold">Parte {f.page}/{f.pageTotal}</div>
+                              )}
+                              <a
+                                href={imgUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block rounded-xl overflow-hidden border border-border-subtle hover:border-primary/40 transition-all group"
+                              >
+                                <img
+                                  src={imgUrl}
+                                  alt={`${t} p${f.page}`}
+                                  className="w-full object-cover group-hover:opacity-90 transition-opacity"
+                                  style={{ aspectRatio: isVertical ? '9/16' : '4/5' }}
+                                />
+                              </a>
+                              <a
+                                href={imgUrl}
+                                download={f.filename}
+                                className="w-full text-center text-[10px] font-bold text-primary bg-primary/5 border border-primary/20 rounded-lg py-1.5 hover:bg-primary/10 transition-colors"
+                              >
+                                ⬇ Download PNG
+                              </a>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       )}
 

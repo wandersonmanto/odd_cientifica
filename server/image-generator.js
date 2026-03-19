@@ -15,10 +15,15 @@ const path      = require('path');
 const TEMPLATES_DIR = path.join(__dirname, 'templates');
 const OUTPUT_DIR    = path.join(__dirname, 'generated');
 
-// Garante que a pasta de saída existe
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-// Caminhos comuns do Chrome no Windows
+// Limites de jogos por imagem
+const PAGE_LIMITS = {
+  feed:  7,
+  story: 7,
+  // resultado e reel não têm limite de paginação
+};
+
 const CHROME_PATHS = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
   'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
@@ -34,27 +39,26 @@ function findChrome() {
 
 // ── Helpers de data ─────────────────────────────────────────────────────────────
 
-const MESES = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const MESES       = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const DIAS_SEMANA = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
 function parseDateParts(dateStr) {
-  // dateStr: "2026-03-15"
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
   return {
-    day:  String(d).padStart(2, '0'),
-    month: MESES[m - 1],
-    year: y,
+    day:     String(d).padStart(2, '0'),
+    month:   MESES[m - 1],
+    year:    y,
     weekday: DIAS_SEMANA[dt.getDay()],
-    full: `${DIAS_SEMANA[dt.getDay()]}, ${d} de ${MESES[m-1]} de ${y}`,
+    full:    `${DIAS_SEMANA[dt.getDay()]}, ${d} de ${MESES[m-1]} de ${y}`,
   };
 }
 
 // ── Rótulos de mercado ──────────────────────────────────────────────────────────
 
 const MARKET_LABELS = {
-  home:     'Casa',
-  away:     'Visitante',
+  home:     'Casa (1X2)',
+  away:     'Visitante (1X2)',
   over05ht: 'Over 0.5 HT',
   over15:   'Over 1.5 FT',
   over25:   'Over 2.5 FT',
@@ -65,37 +69,47 @@ const MARKET_LABELS = {
 
 // ── Builders de HTML parcial ────────────────────────────────────────────────────
 
+/**
+ * Feed: coluna esquerda = hora + odd (pequena), coluna direita = partida, mercado, liga
+ */
 function buildFeedRow(pick) {
   return `
     <div class="game">
-      <div class="hora">${pick.match_time}</div>
+      <div class="time-col">
+        <div class="hora">${pick.match_time}</div>
+        <div class="odd-small">${Number(pick.odd_used).toFixed(2)}</div>
+      </div>
       <div class="info">
-        <div class="partida">${pick.home_team} <span style="color:#2a3e50">v</span> ${pick.away_team}</div>
+        <div class="partida">${pick.home_team} <span style="color:#263d4f">v</span> ${pick.away_team}</div>
         <div class="mercado">${MARKET_LABELS[pick.market] || pick.market}</div>
         <div class="liga">${pick.country} — ${pick.league}</div>
       </div>
-      <div class="odd-box">
-        <div class="label">Odd</div>
-        <div class="value">${Number(pick.odd_used).toFixed(2)}</div>
-      </div>
     </div>
   `;
 }
 
+/**
+ * Story: mesmo layout do feed (hora+odd | partida/mercado/liga)
+ */
 function buildStoryCard(pick) {
   return `
     <div class="card">
-      <div class="card-top">
+      <div class="time-col">
         <div class="hora">${pick.match_time}</div>
-        <div class="card-odd">${Number(pick.odd_used).toFixed(2)}</div>
+        <div class="odd-small">${Number(pick.odd_used).toFixed(2)}</div>
       </div>
-      <div class="partida">${pick.home_team} <span style="color:#2a3e50">v</span> ${pick.away_team}</div>
-      <div class="mercado">${MARKET_LABELS[pick.market] || pick.market}</div>
-      <div class="liga">${pick.country} — ${pick.league}</div>
+      <div class="info">
+        <div class="partida">${pick.home_team} <span style="color:#263d4f">v</span> ${pick.away_team}</div>
+        <div class="mercado">${MARKET_LABELS[pick.market] || pick.market}</div>
+        <div class="liga">${pick.country} — ${pick.league}</div>
+      </div>
     </div>
   `;
 }
 
+/**
+ * Resultado: hora | partida + mercado + score | badge GREEN/RED
+ */
 function buildResultRow(pick) {
   const won     = pick.result === 1;
   const pending = pick.resolved === 0;
@@ -103,32 +117,32 @@ function buildResultRow(pick) {
     ? `${pick.home_score}–${pick.away_score}`
     : null;
 
-  let badge, accentColor;
+  let badge, style;
   if (pending) {
-    badge = '⏳';
-    accentColor = '#6b8499';
+    badge = '⏳ Pendente';
+    style = '';
   } else if (won) {
     badge = '✅ GREEN';
-    accentColor = '#00f0a8';
+    style = 'color:#00f0a8;border-color:#00f0a844;background:#00f0a811';
   } else {
     badge = '❌ RED';
-    accentColor = '#f05050';
+    style = 'color:#f05050;border-color:#f0505044;background:#f0505011';
   }
 
   return `
     <div class="row">
       <div class="hora">${pick.match_time}</div>
       <div>
-        <div class="partida">${pick.home_team} <span style="color:#2a3e50">v</span> ${pick.away_team}</div>
+        <div class="partida">${pick.home_team} <span style="color:#263d4f">v</span> ${pick.away_team}</div>
         <div class="mercado">${MARKET_LABELS[pick.market] || pick.market}</div>
         ${ftScore ? `<div class="score">Placar: ${ftScore}</div>` : ''}
       </div>
-      <div class="badge" style="${pending ? '' : `color:${accentColor};border-color:${accentColor}44;background:${accentColor}11`}">${badge}</div>
+      <div class="badge" style="${style}">${badge}</div>
     </div>
   `;
 }
 
-// ── Renderização principal ──────────────────────────────────────────────────────
+// ── Renderização Puppeteer ──────────────────────────────────────────────────────
 
 async function renderTemplate(templateName, html) {
   const chromePath = findChrome();
@@ -153,20 +167,12 @@ async function renderTemplate(templateName, html) {
   try {
     const page = await browser.newPage();
 
-    // Detecta dimensões pelo nome do template
     const dims = templateName.includes('story') || templateName.includes('reel')
       ? { width: 1080, height: 1920 }
       : { width: 1080, height: 1350 };
 
     await page.setViewport(dims);
-
-    // Carrega o HTML
-    await page.setContent(html, {
-      waitUntil: ['networkidle0', 'domcontentloaded'],
-      timeout: 30000,
-    });
-
-    // Aguarda fontes carregarem (se Google Fonts não estiver disponível, já usa fallback)
+    await page.setContent(html, { waitUntil: ['networkidle0', 'domcontentloaded'], timeout: 30000 });
     await page.evaluateHandle('document.fonts.ready');
 
     const buffer = await page.screenshot({
@@ -184,35 +190,30 @@ async function renderTemplate(templateName, html) {
 
 /**
  * Gera imagens para uma set de picks.
- * @param {string} date           "YYYY-MM-DD"
- * @param {Array}  picks          array de picks (com placar, resultado, etc.)
- * @param {string[]} types        ['feed','story','resultado','reel'] ou subset
- * @param {string} logoUrl        URL pública do logo (pode ser base64 ou http)
- * @returns {Array} [{ type, filename, url }]
+ * Feed e Story são paginados (max PAGE_LIMITS[type] por imagem).
+ * Resultado e Reel são sempre uma imagem.
  */
 async function generateImages({ date, picks, types = ['feed', 'story', 'resultado', 'reel'], logoUrl = '' }) {
   const dateParts = parseDateParts(date);
   const results   = [];
 
-  // Pré-calcula estatísticas para os templates de resultado/reel
-  const resolved  = picks.filter(p => p.resolved === 1);
-  const wins      = picks.filter(p => p.result === 1).length;
-  const losses    = picks.filter(p => p.result === 0).length;
-  const winRate   = resolved.length > 0 ? Math.round((wins / resolved.length) * 100) : 0;
-  const avgOdd    = picks.length > 0
+  // Estatísticas globais
+  const resolved = picks.filter(p => p.resolved === 1);
+  const wins     = picks.filter(p => p.result === 1).length;
+  const losses   = picks.filter(p => p.result === 0).length;
+  const winRate  = resolved.length > 0 ? Math.round((wins / resolved.length) * 100) : 0;
+  const avgOdd   = picks.length > 0
     ? (picks.reduce((s, p) => s + Number(p.odd_used), 0) / picks.length).toFixed(2)
     : '—';
 
-  // Mercado mais frequente
   const mktCount = {};
   picks.forEach(p => { mktCount[p.market] = (mktCount[p.market] || 0) + 1; });
   const topMarket = Object.entries(mktCount).sort((a, b) => b[1] - a[1])[0];
   const mercadoPrincipal = topMarket ? (MARKET_LABELS[topMarket[0]] || topMarket[0]) : '—';
 
-  // Cor temática do resultado
   const isGreen = winRate >= 50;
-  const ACCENT_GREEN  = { color: '#00f0a8', subtle: 'rgba(0,240,168,.07)', border: 'rgba(0,240,168,.3)', glow: 'rgba(0,240,168,.18)' };
-  const ACCENT_RED    = { color: '#f05050', subtle: 'rgba(240,80,80,.07)',  border: 'rgba(240,80,80,.3)',  glow: 'rgba(240,80,80,.18)'  };
+  const ACCENT_GREEN = { color: '#00f0a8', subtle: 'rgba(0,240,168,.07)', border: 'rgba(0,240,168,.3)', glow: 'rgba(0,240,168,.18)' };
+  const ACCENT_RED   = { color: '#f05050', subtle: 'rgba(240,80,80,.07)',  border: 'rgba(240,80,80,.3)',  glow: 'rgba(240,80,80,.18)'  };
   const accent = isGreen ? ACCENT_GREEN : ACCENT_RED;
 
   for (const type of types) {
@@ -222,83 +223,98 @@ async function generateImages({ date, picks, types = ['feed', 'story', 'resultad
       continue;
     }
 
-    let tpl = fs.readFileSync(tplPath, 'utf8');
+    const baseTpl = fs.readFileSync(tplPath, 'utf8');
+    const limit   = PAGE_LIMITS[type]; // undefined = sem paginação
+    const chunks  = limit
+      ? Array.from({ length: Math.ceil(picks.length / limit) }, (_, i) => picks.slice(i * limit, (i + 1) * limit))
+      : [picks]; // resultado e reel: uma página
 
-    // Monta HTML de jogos específico por template
-    let jogosHtml = '';
+    const pageTotal = chunks.length;
 
-    switch (type) {
-      case 'feed':
-        jogosHtml = picks.map(buildFeedRow).join('');
-        break;
-      case 'story':
-        // Story: limita a no máximo 4 cards para não estourar
-        jogosHtml = picks.slice(0, 4).map(buildStoryCard).join('');
-        break;
-      case 'resultado':
-        jogosHtml = picks.map(buildResultRow).join('');
-        break;
-      case 'reel':
-        // Reel cover não tem lista de jogos inline
-        break;
-    }
+    for (let pageIdx = 0; pageIdx < chunks.length; pageIdx++) {
+      const chunk   = chunks[pageIdx];
+      const pageNum = pageIdx + 1;
+      let tpl = baseTpl;
 
-    // Determina status para resultado
-    let statusEmoji = '', statusText = '';
-    if (type === 'resultado') {
-      if (picks.some(p => p.resolved === 0)) {
-        statusEmoji = '⏳'; statusText = 'Pendente';
-      } else if (winRate === 100) {
-        statusEmoji = '🟢'; statusText = 'ALL GREEN!';
-      } else if (wins > losses) {
-        statusEmoji = '🟢'; statusText = 'GREEN';
-      } else if (wins === losses) {
-        statusEmoji = '🟡'; statusText = 'NEUTRO';
-      } else {
-        statusEmoji = '🔴'; statusText = 'RED';
+      // Monta HTML de jogos
+      let jogosHtml = '';
+      switch (type) {
+        case 'feed':
+          jogosHtml = chunk.map(buildFeedRow).join('');
+          break;
+        case 'story':
+          jogosHtml = chunk.map(buildStoryCard).join('');
+          break;
+        case 'resultado':
+          jogosHtml = picks.map(buildResultRow).join('');
+          break;
+        case 'reel':
+          break;
       }
+
+      // Status para resultado
+      let statusEmoji = '', statusText = '';
+      if (type === 'resultado') {
+        if (picks.some(p => p.resolved === 0)) {
+          statusEmoji = '⏳'; statusText = 'Pendente';
+        } else if (winRate === 100) {
+          statusEmoji = '🟢'; statusText = 'ALL GREEN!';
+        } else if (wins > losses) {
+          statusEmoji = '🟢'; statusText = 'GREEN';
+        } else if (wins === losses) {
+          statusEmoji = '🟡'; statusText = 'NEUTRO';
+        } else {
+          statusEmoji = '🔴'; statusText = 'RED';
+        }
+      }
+
+      // Remove bloco {{#if_multi}}…{{/if_multi}} quando só há 1 página
+      if (pageTotal === 1) {
+        tpl = tpl.replace(/\{\{#if_multi\}\}[\s\S]*?\{\{\/if_multi\}\}/g, '');
+      } else {
+        tpl = tpl.replace(/\{\{#if_multi\}\}([\s\S]*?)\{\{\/if_multi\}\}/g, '$1');
+      }
+
+      const replacements = {
+        LOGO_URL:          logoUrl,
+        DATA_DIA:          dateParts.day,
+        DATA_MES:          dateParts.month,
+        DATA_TEXTO:        dateParts.full,
+        TOTAL_PICKS:       String(picks.length),
+        PAGE_NUM:          String(pageNum),
+        PAGE_TOTAL:        String(pageTotal),
+        JOGOS_HTML:        jogosHtml,
+        RESULTADOS_HTML:   jogosHtml,
+        STATUS_EMOJI:      statusEmoji,
+        STATUS:            statusText,
+        WINS:              String(wins),
+        LOSSES:            String(losses),
+        WIN_RATE:          String(winRate),
+        MERCADO_PRINCIPAL: mercadoPrincipal,
+        ODD_MEDIA:         avgOdd,
+        ACCENT_COLOR:      accent.color,
+        ACCENT_SUBTLE:     accent.subtle,
+        ACCENT_BORDER:     accent.border,
+        ACCENT_GLOW:       accent.glow,
+        GLOW_COLOR:        accent.color,
+      };
+
+      for (const [key, val] of Object.entries(replacements)) {
+        tpl = tpl.replaceAll(`{{${key}}}`, val);
+      }
+
+      console.log(`[gen] Renderizando ${type} (${pageNum}/${pageTotal})…`);
+      const buffer = await renderTemplate(type, tpl);
+
+      // Nome do arquivo: inclui sufixo de página se houver mais de uma
+      const suffix   = pageTotal > 1 ? `_${pageNum}de${pageTotal}` : '';
+      const filename = `${type}_${date}${suffix}.png`;
+      const filepath = path.join(OUTPUT_DIR, filename);
+      fs.writeFileSync(filepath, buffer);
+
+      results.push({ type, page: pageNum, pageTotal, filename, url: `/generated/${filename}` });
+      console.log(`[gen] ✅ ${filename} salvo.`);
     }
-
-    // Substitui todos os placeholders
-    const replacements = {
-      LOGO_URL:          logoUrl,
-      DATA_DIA:          dateParts.day,
-      DATA_MES:          dateParts.month,
-      DATA_TEXTO:        dateParts.full,
-      TOTAL_PICKS:       String(picks.length),
-      JOGOS_HTML:        jogosHtml,
-      RESULTADOS_HTML:   jogosHtml,
-      STATUS_EMOJI:      statusEmoji,
-      STATUS:            statusText,
-      WINS:              String(wins),
-      LOSSES:            String(losses),
-      WIN_RATE:          String(winRate),
-      MERCADO_PRINCIPAL: mercadoPrincipal,
-      ODD_MEDIA:         avgOdd,
-      // Cores dinâmicas (resultado)
-      ACCENT_COLOR:      accent.color,
-      ACCENT_SUBTLE:     accent.subtle,
-      ACCENT_BORDER:     accent.border,
-      ACCENT_GLOW:       accent.glow,
-      // Legado (resultado.html antigo)
-      GLOW_COLOR:        accent.color,
-    };
-
-    for (const [key, val] of Object.entries(replacements)) {
-      tpl = tpl.replaceAll(`{{${key}}}`, val);
-    }
-
-    // Renderiza com Puppeteer
-    console.log(`[gen] Renderizando ${type}...`);
-    const buffer = await renderTemplate(type, tpl);
-
-    // Salva arquivo
-    const filename = `${type}_${date}.png`;
-    const filepath = path.join(OUTPUT_DIR, filename);
-    fs.writeFileSync(filepath, buffer);
-
-    results.push({ type, filename, url: `/generated/${filename}` });
-    console.log(`[gen] ✅ ${filename} salvo.`);
   }
 
   return results;

@@ -20,30 +20,29 @@
     .page {
       width: 1080px;
       height: 1350px;
-      padding: 52px 56px 40px;
+      padding: 48px 52px 36px;
       position: relative;
     }
 
-    /* Grid overlay sutil */
+    /* Grid overlay */
     .page::before {
       content: '';
       position: absolute;
       inset: 0;
       background-image:
-        linear-gradient(rgba(0,240,168,.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(0,240,168,.035) 1px, transparent 1px);
+        linear-gradient(rgba(0,240,168,.032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,240,168,.032) 1px, transparent 1px);
       background-size: 54px 54px;
       pointer-events: none;
     }
 
-    /* Borda verde no topo */
+    /* Linha verde no topo */
     .page::after {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
       height: 3px;
       background: linear-gradient(90deg, transparent, #00f0a8 40%, #00f0a8 60%, transparent);
-      border-radius: 0 0 4px 4px;
     }
 
     /* ── Header ── */
@@ -51,81 +50,56 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 36px;
+      margin-bottom: 28px;
     }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 18px;
-    }
+    .brand { display: flex; align-items: center; gap: 16px; }
 
     .brand-logo {
-      width: 72px; height: 72px;
-      border-radius: 16px;
+      width: 62px; height: 62px;
+      border-radius: 14px;
       background: #0e1621;
       border: 1px solid rgba(0,240,168,.35);
-      box-shadow: 0 0 22px rgba(0,240,168,.22);
+      box-shadow: 0 0 18px rgba(0,240,168,.2);
       overflow: hidden;
       display: flex; align-items: center; justify-content: center;
     }
-
     .brand-logo img { width: 100%; height: 100%; object-fit: cover; }
 
-    .brand-text h1 {
-      font-size: 34px;
-      font-weight: 900;
-      letter-spacing: .3px;
-      line-height: 1;
-    }
-
+    .brand-text h1 { font-size: 30px; font-weight: 900; line-height: 1; }
     .brand-text h1 span { color: #00f0a8; }
-
-    .brand-text p {
-      font-size: 13px;
-      color: #5a7390;
-      margin-top: 4px;
-      font-weight: 500;
-      letter-spacing: .5px;
-      text-transform: uppercase;
-    }
+    .brand-text p { font-size: 12px; color: #3d5a70; margin-top: 4px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; }
 
     .date-badge {
-      background: rgba(0,240,168,.07);
-      border: 1px solid rgba(0,240,168,.25);
-      border-radius: 14px;
-      padding: 12px 22px;
+      background: rgba(0,240,168,.06);
+      border: 1px solid rgba(0,240,168,.22);
+      border-radius: 12px;
+      padding: 10px 18px;
       text-align: center;
     }
+    .date-badge .day { font-size: 36px; font-weight: 900; color: #00f0a8; line-height: 1; }
+    .date-badge .month { font-size: 13px; color: #4a6880; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-top: 2px; }
 
-    .date-badge .day { font-size: 42px; font-weight: 900; color: #00f0a8; line-height: 1; }
-    .date-badge .month { font-size: 15px; color: #6a8fa8; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-top: 3px; }
-
-    /* ── Hero title ── */
-    .hero { margin-bottom: 30px; }
-    .hero h2 {
-      font-size: 52px;
-      font-weight: 900;
-      line-height: 1.05;
-      letter-spacing: -.5px;
-    }
+    /* ── Hero ── */
+    .hero { margin-bottom: 20px; }
+    .hero h2 { font-size: 40px; font-weight: 900; line-height: 1.05; letter-spacing: -.5px; }
     .hero h2 em { color: #00f0a8; font-style: normal; }
-    .hero p { font-size: 19px; color: #5c7a93; margin-top: 8px; font-weight: 500; }
+    .hero p { font-size: 15px; color: #3d5a70; margin-top: 5px; font-weight: 500; }
 
-    /* ── Games list ── */
+    /* ── Lista ── */
     .list {
-      border: 1px solid rgba(0,240,168,.2);
-      border-radius: 24px;
-      background: rgba(255,255,255,.025);
-      box-shadow: 0 0 40px rgba(0,240,168,.09), inset 0 1px 0 rgba(255,255,255,.04);
+      border: 1px solid rgba(0,240,168,.18);
+      border-radius: 20px;
+      background: rgba(255,255,255,.022);
+      box-shadow: 0 0 36px rgba(0,240,168,.08);
       overflow: hidden;
     }
 
     .list-header {
-      padding: 16px 28px;
-      background: rgba(0,240,168,.06);
-      border-bottom: 1px solid rgba(0,240,168,.15);
-      font-size: 13px;
+      padding: 12px 24px;
+      background: rgba(0,240,168,.055);
+      border-bottom: 1px solid rgba(0,240,168,.13);
+      font-size: 12px;
       font-weight: 700;
       color: #00f0a8;
       text-transform: uppercase;
@@ -135,84 +109,96 @@
       align-items: center;
     }
 
+    /* ── Game row — NOVO layout ── */
     .game {
       display: grid;
-      grid-template-columns: 120px 1fr 160px;
-      gap: 20px;
+      /* coluna esquerda: hora + odd | coluna direita: info */
+      grid-template-columns: 112px 1fr;
+      gap: 18px;
       align-items: center;
-      padding: 22px 28px;
-      border-bottom: 1px solid rgba(255,255,255,.055);
-      transition: background .15s;
+      padding: 14px 24px;
+      border-bottom: 1px solid rgba(255,255,255,.05);
     }
-
     .game:last-child { border-bottom: none; }
 
+    /* Coluna esquerda */
+    .time-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
     .hora {
-      font-size: 26px;
+      width: 100%;
+      font-size: 24px;
       font-weight: 800;
       color: #c8f0e2;
       background: rgba(0,240,168,.07);
       border: 1px solid rgba(0,240,168,.2);
-      border-radius: 12px;
-      padding: 11px 14px;
+      border-radius: 10px;
+      padding: 9px 10px;
       text-align: center;
-      letter-spacing: .5px;
+      letter-spacing: .3px;
     }
 
+    .odd-small {
+      font-size: 15px;
+      font-weight: 700;
+      color: #00ffb0;
+      opacity: .85;
+      letter-spacing: .3px;
+    }
+
+    /* Coluna direita */
+    .info { min-width: 0; }
+
     .info .partida {
-      font-size: 28px;
+      font-size: 26px;
       font-weight: 800;
-      margin-bottom: 7px;
-      line-height: 1.2;
+      margin-bottom: 5px;
+      line-height: 1.15;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .info .mercado {
-      font-size: 20px;
+      /* Onde estava o odd box — agora em destaque verde */
+      font-size: 18px;
       color: #00f0a8;
       font-weight: 700;
+      margin-bottom: 3px;
     }
 
     .info .liga {
-      font-size: 15px;
-      color: #4a6477;
-      margin-top: 5px;
+      /* Mesmo tamanho que mercado, mais visível que antes */
+      font-size: 18px;
+      color: #3d5568;
       font-weight: 500;
     }
 
-    .odd-box {
-      text-align: center;
-      background: rgba(0,240,168,.08);
-      border: 1px solid rgba(0,240,168,.3);
-      border-radius: 16px;
-      padding: 16px 12px;
-      box-shadow: inset 0 0 20px rgba(0,240,168,.06);
+    /* ── Paginação ── */
+    .page-label {
+      position: absolute;
+      bottom: 18px;
+      left: 52px;
+      font-size: 14px;
+      color: #263848;
+      font-weight: 600;
     }
-
-    .odd-box .label { font-size: 12px; color: #4a6c80; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; }
-    .odd-box .value { font-size: 34px; font-weight: 900; color: #00ffb0; margin-top: 4px; line-height: 1; }
 
     /* ── Footer ── */
     .footer {
       position: absolute;
-      left: 56px; right: 56px; bottom: 34px;
+      left: 52px; right: 52px; bottom: 30px;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-
-    .footer .left { font-size: 16px; color: #344d60; font-weight: 500; }
-    .footer .handle {
-      font-size: 18px;
-      font-weight: 700;
-      color: #00f0a8;
-      opacity: .7;
-      letter-spacing: .3px;
-    }
-    .footer .disclaimer {
-      font-size: 13px;
-      color: #263848;
-      font-weight: 500;
-    }
+    .footer .left { font-size: 14px; color: #263848; font-weight: 500; }
+    .footer .handle { font-size: 16px; font-weight: 700; color: #00f0a8; opacity: .65; }
+    .footer .disclaimer { font-size: 12px; color: #1e2e3a; }
   </style>
 </head>
 <body>
@@ -241,7 +227,7 @@
 
     <div class="list">
       <div class="list-header">
-        <span>📋 {{TOTAL_PICKS}} Picks Selecionados</span>
+        <span>📋 {{TOTAL_PICKS}} Picks — Parte {{PAGE_NUM}}/{{PAGE_TOTAL}}</span>
         <span>{{DATA_TEXTO}}</span>
       </div>
       {{JOGOS_HTML}}

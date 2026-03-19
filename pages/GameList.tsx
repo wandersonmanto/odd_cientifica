@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkCheck, X } from 'lucide-react';
 import { GameRecord } from '../types';
 import { getAllGames } from '../src/db/gameRepository';
+import GameAnalysisModal from '../components/GameAnalysisModal';
 
 const API = 'http://localhost:3001';
 
@@ -301,8 +302,12 @@ const GameList: React.FC = () => {
     paginatedGames.some(g => g.id === p.game_id)
   ).length;
 
+  // Modal de análise
+  const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null);
+
   return (
     <div className="space-y-6">
+      <GameAnalysisModal game={analysisGame} onClose={() => setAnalysisGame(null)} />
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg text-sm font-semibold shadow-xl transition-all ${toast.ok ? 'bg-primary/20 border border-primary/50 text-primary' : 'bg-red-500/20 border border-red-500/50 text-red-400'}`}>
@@ -620,7 +625,11 @@ const GameList: React.FC = () => {
                                   }`}>
                                     {game.match_time}
                                 </td>
-                                <td className="px-2 py-1.5 font-medium text-white truncate max-w-[200px]" title={`${game.home_team} vs ${game.away_team}`}>
+                                <td
+                                    className="px-2 py-1.5 font-medium text-white truncate max-w-[200px] cursor-pointer hover:text-primary hover:underline transition-colors"
+                                    title={`${game.home_team} vs ${game.away_team} — Clique para analisar`}
+                                    onClick={() => setAnalysisGame(game)}
+                                >
                                     {game.home_team} <span className="text-slate-500 mx-0.5">v</span> {game.away_team}
                                 </td>
                                 <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]" title={`${game.country} - ${game.league}`}>{game.country} - {game.league}</td>
