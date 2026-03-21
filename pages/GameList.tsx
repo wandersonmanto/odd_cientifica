@@ -44,6 +44,7 @@ const GameList: React.FC = () => {
   const [oddMax, setOddMax] = useState('');
   const [timeFrom, setTimeFrom] = useState('');
   const [timeTo, setTimeTo] = useState('');
+  const [filterLowWin, setFilterLowWin] = useState(false); // filtro Favorito Dominante
 
   // All odd columns to check for range filter
   const ODD_COLS: (keyof GameRecord)[] = [
@@ -215,6 +216,19 @@ const GameList: React.FC = () => {
     return t >= from && t <= to;
   };
 
+  // Helper: probabilidade de vença ajustada por eficiência (espelha lógica do GameAnalysisModal)
+  const calcWinProbs = (g: GameRecord) => {
+    const clamp = (v: number, mn = 0, mx = 100) => Math.min(mx, Math.max(mn, v));
+    const effH = clamp(g.efficiency_home, 0, 100);
+    const effA = clamp(g.efficiency_away, 0, 100);
+    const effTotal = effH + effA || 1;
+    const effBias = ((effH - effA) / effTotal) * 15;
+    return {
+      homeWin: clamp(g.wins_percent_home + effBias),
+      awayWin: clamp(g.wins_percent_away - effBias),
+    };
+  };
+
   // Handle Sorting and Filtering
   const processedGames = useMemo(() => {
     let result = [...filteredGames];
@@ -250,6 +264,21 @@ const GameList: React.FC = () => {
       result = result.filter(g => g.match_time >= from && g.match_time <= to);
     }
 
+    // Filtro Favorito Dominante: um lado ≤15% + favorito >50% + mercado confirma (odd do favorito < odd do azarão)
+    if (filterLowWin) {
+      result = result.filter(g => {
+        const { homeWin, awayWin } = calcWinProbs(g);
+        const oneSideLow  = homeWin <= 15 || awayWin <= 15;
+        const favoriteDom = Math.max(homeWin, awayWin) > 50;
+        // O time com maior win% deve ter odd menor (mercado e modelo concordam)
+        const homeIsFav = homeWin >= awayWin;
+        const oddOk = homeIsFav
+          ? (g.odd_home > 0 && g.odd_away > 0 && g.odd_home < g.odd_away)
+          : (g.odd_home > 0 && g.odd_away > 0 && g.odd_away < g.odd_home);
+        return oneSideLow && favoriteDom && oddOk;
+      });
+    }
+
     if (sortConfig.direction && sortConfig.key) {
       result.sort((a, b) => {
         const aVal = a[sortConfig.key] as any;
@@ -267,7 +296,7 @@ const GameList: React.FC = () => {
     }
 
     return result;
-  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig]);
+  }, [filteredGames, hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig, filterLowWin]);
 
   // Handle Pagination
   const totalPages = Math.ceil(processedGames.length / gamesPerPage) || 1;
@@ -278,7 +307,7 @@ const GameList: React.FC = () => {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig]);
+  }, [hideUnplayed, hideNoHome, hideNoOv15, hideNoUn35, oddMin, oddMax, timeFrom, timeTo, sortConfig, filterLowWin]);
 
   const handleSort = (key: keyof GameRecord) => {
     let direction: 'asc' | 'desc' | null = 'asc';
@@ -348,6 +377,32 @@ const GameList: React.FC = () => {
                         <span className="text-xs text-slate-300 font-medium whitespace-nowrap">Un 3.5</span>
                     </label>
                 </div>
+            </div>
+
+            {/* Botão: Favorito Dominante */}
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Análise</span>
+              <button
+                onClick={() => setFilterLowWin(v => !v)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
+                  filterLowWin
+                    ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_10px_rgba(0,240,168,0.15)]'
+                    : 'bg-background-dark border-border-subtle text-slate-400 hover:border-primary/30 hover:text-primary'
+                }`}
+                title="Mostra jogos onde a probabilidade de vença de um dos lados é ≤ 15% (favorito técnico dominante)"
+              >
+                <span>🎯 Favorito Dominante</span>
+                <span className={`text-[9px] font-normal px-1.5 py-0.5 rounded-full ${
+                  filterLowWin
+                    ? 'bg-primary/20 text-primary'
+                    : 'bg-white/5 text-slate-600'
+                }`}>
+                  {filterLowWin
+                    ? `${processedGames.length} jogo${processedGames.length !== 1 ? 's' : ''}`
+                    : '≤ 15%'
+                  }
+                </span>
+              </button>
             </div>
 
             {/* Odd Range Filter */}
@@ -453,6 +508,20 @@ const GameList: React.FC = () => {
                           <BookmarkCheck className="w-3 h-3 inline text-amber-400/60" />
                         </th>
                         <th className="px-2 py-2 border-b border-border-subtle sticky left-8 bg-surface z-10 min-w-[60px] max-w-[80px] cursor-pointer hover:bg-white/5 transition-colors" onClick={() => handleSort('match_time')}>Hora {getSortIcon('match_time')}</th>
+                        {filterLowWin && (
+                          <>
+                            <th
+                              className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-primary/5 transition-colors text-primary/70 bg-primary/3"
+                              onClick={() => handleSort('wins_percent_home')}
+                              title="Win% Casa — ordenar"
+                            >Win%H {getSortIcon('wins_percent_home')}</th>
+                            <th
+                              className="px-1 py-2 border-b border-border-subtle text-center cursor-pointer hover:bg-rose-400/5 transition-colors text-rose-400/70 bg-rose-400/3"
+                              onClick={() => handleSort('wins_percent_away')}
+                              title="Win% Visitante — ordenar"
+                            >Win%A {getSortIcon('wins_percent_away')}</th>
+                          </>
+                        )}
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[200px]">Partida</th>
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[120px]">Liga</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Status</th>
@@ -625,6 +694,24 @@ const GameList: React.FC = () => {
                                   }`}>
                                     {game.match_time}
                                 </td>
+                                {filterLowWin && (() => {
+                                  const { homeWin, awayWin } = calcWinProbs(game);
+                                  const hFav = homeWin >= awayWin;
+                                  return (
+                                    <>
+                                      <td className="px-2 py-1.5 text-center tabular-nums">
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${hFav ? 'text-primary bg-primary/10' : 'text-rose-400 bg-rose-400/10'}`}>
+                                          {Math.round(homeWin)}%
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-1.5 text-center tabular-nums">
+                                        <span className={`text-xs font-bold px-2 py-0.5 rounded ${!hFav ? 'text-primary bg-primary/10' : 'text-rose-400 bg-rose-400/10'}`}>
+                                          {Math.round(awayWin)}%
+                                        </span>
+                                      </td>
+                                    </>
+                                  );
+                                })()}
                                 <td
                                     className="px-2 py-1.5 font-medium text-white truncate max-w-[200px] cursor-pointer hover:text-primary hover:underline transition-colors"
                                     title={`${game.home_team} vs ${game.away_team} — Clique para analisar`}
