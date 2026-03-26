@@ -20,6 +20,7 @@ interface DashboardStats {
     away:   { total: number; wins: number; win_rate: number };
     over25: { total: number; wins: number; win_rate: number };
     btts:   { total: number; wins: number; win_rate: number };
+    btts_no:{ total: number; wins: number; win_rate: number };
   };
   patterns: {
     over05_pct: number;
@@ -223,6 +224,7 @@ const Dashboard: React.FC = () => {
                 { label: 'Match Odds — Visitante',  data: market_stats.away   },
                 { label: 'Over 2.5 Gols',           data: market_stats.over25 },
                 { label: 'Ambas Marcam (Sim)',       data: market_stats.btts   },
+                { label: 'Ambas Marcam (Não)',       data: market_stats.btts_no },
               ].map((item, i) => (
                 <div key={i} className="space-y-1">
                   <div className="flex justify-between text-[11px] font-mono mb-1">

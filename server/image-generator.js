@@ -19,9 +19,11 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
 // Limites de jogos por imagem
 const PAGE_LIMITS = {
-  feed:  7,
-  story: 7,
-  // resultado e reel não têm limite de paginação
+  feed:         7,
+  story:        7,
+  'sniper-feed':  7,
+  'sniper-story': 7,
+  // resultado, reel, sniper-resultado, sniper-reel não têm limite de paginação
 };
 
 const CHROME_PATHS = [
@@ -193,7 +195,7 @@ async function renderTemplate(templateName, html) {
  * Feed e Story são paginados (max PAGE_LIMITS[type] por imagem).
  * Resultado e Reel são sempre uma imagem.
  */
-async function generateImages({ date, picks, types = ['feed', 'story', 'resultado', 'reel'], logoUrl = '' }) {
+async function generateImages({ date, picks, types = ['feed', 'story', 'resultado', 'reel'], logoUrl = '', filePrefix = '' }) {
   const dateParts = parseDateParts(date);
   const results   = [];
 
@@ -240,15 +242,19 @@ async function generateImages({ date, picks, types = ['feed', 'story', 'resultad
       let jogosHtml = '';
       switch (type) {
         case 'feed':
+        case 'sniper-feed':
           jogosHtml = chunk.map(buildFeedRow).join('');
           break;
         case 'story':
+        case 'sniper-story':
           jogosHtml = chunk.map(buildStoryCard).join('');
           break;
         case 'resultado':
+        case 'sniper-resultado':
           jogosHtml = picks.map(buildResultRow).join('');
           break;
         case 'reel':
+        case 'sniper-reel':
           break;
       }
 
@@ -308,7 +314,7 @@ async function generateImages({ date, picks, types = ['feed', 'story', 'resultad
 
       // Nome do arquivo: inclui sufixo de página se houver mais de uma
       const suffix   = pageTotal > 1 ? `_${pageNum}de${pageTotal}` : '';
-      const filename = `${type}_${date}${suffix}.png`;
+      const filename = `${filePrefix}${type}_${date}${suffix}.png`;
       const filepath = path.join(OUTPUT_DIR, filename);
       fs.writeFileSync(filepath, buffer);
 

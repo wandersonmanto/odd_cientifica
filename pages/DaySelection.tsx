@@ -14,6 +14,7 @@ const MARKET_OPTIONS = [
   { value: 'under35',  label: 'Under 3.5 FT',          oddKey: 'odd_under35' },
   { value: 'under45',  label: 'Under 4.5 FT',          oddKey: 'odd_under45' },
   { value: 'btts',     label: 'Ambas Marcam (Sim)',     oddKey: 'odd_btts_yes' },
+  { value: 'btts_no',  label: 'Ambas Marcam (Não)',     oddKey: 'odd_btts_no' },
 ] as const;
 
 type MarketValue = typeof MARKET_OPTIONS[number]['value'];
@@ -44,8 +45,11 @@ const marketLabel = (m: string) =>
   MARKET_OPTIONS.find(o => o.value === m)?.label ?? m;
 
 const today = () => new Date().toISOString().split('T')[0];
-const fmt2 = (v: number | null | undefined) =>
-  v !== null && v !== undefined ? v.toFixed(2) : '-';
+const fmt2 = (v: any) => {
+  if (v === null || v === undefined) return '-';
+  const num = typeof v === 'string' ? parseFloat(v) : v;
+  return isNaN(num) ? '-' : num.toFixed(2);
+};
 
 const DaySelection: React.FC = () => {
   const [allGames, setAllGames] = useState<GameRecord[]>([]);

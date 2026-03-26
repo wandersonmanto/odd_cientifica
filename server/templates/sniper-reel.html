@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Sniper Reel Capa</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 1080px;
+      height: 1920px;
+      font-family: 'Inter', Arial, sans-serif;
+      background:
+        radial-gradient(ellipse 1200px 800px at 50% 5%, rgba(255,102,0,.24), transparent 55%),
+        radial-gradient(ellipse 700px 500px at 20% 95%, rgba(255,140,0,.10), transparent),
+        linear-gradient(180deg, #08040100 0%, #0c0803 40%, #090602 80%, #070401 100%);
+      color: #fff;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,102,0,.033) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,102,0,.033) 1px, transparent 1px);
+      background-size: 60px 60px;
+      pointer-events: none;
+    }
+
+    /* Linha laranja vertical esquerda */
+    body::after {
+      content: '';
+      position: fixed;
+      top: 0; left: 0;
+      width: 5px; height: 100%;
+      background: linear-gradient(180deg, transparent, #FF6600 25%, #FF8C00 75%, transparent);
+    }
+
+    .page {
+      width: 1080px;
+      height: 1920px;
+      padding: 70px 72px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    /* ── TOP ── */
+    .top {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .brand { display: flex; align-items: center; gap: 18px; }
+
+    .logo-wrap {
+      width: 80px; height: 80px;
+      border-radius: 18px;
+      background: #1a0900;
+      border: 1px solid rgba(255,102,0,.45);
+      box-shadow: 0 0 24px rgba(255,102,0,.28);
+      overflow: hidden;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-wrap img { width: 100%; height: 100%; object-fit: cover; }
+
+    .brand-text h1 { font-size: 36px; font-weight: 900; line-height: 1; }
+    .brand-text h1 span { color: #FF6600; }
+    .brand-text p { font-size: 13px; color: #5a3010; margin-top: 4px; font-weight: 600; letter-spacing: .8px; text-transform: uppercase; }
+
+    .ep-badge {
+      background: rgba(255,102,0,.09);
+      border: 1px solid rgba(255,102,0,.30);
+      border-radius: 14px;
+      padding: 12px 24px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #FF6600;
+      letter-spacing: .5px;
+    }
+
+    /* ── MIDDLE ── */
+    .middle {
+      width: 100%;
+      padding: 0 0 20px;
+    }
+
+    .eyebrow {
+      font-size: 18px;
+      font-weight: 700;
+      color: #FF6600;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .eyebrow::before {
+      content: '';
+      display: inline-block;
+      width: 36px; height: 3px;
+      background: linear-gradient(90deg, transparent, #FF6600);
+    }
+
+    .main-title {
+      font-size: 120px;
+      font-weight: 900;
+      line-height: .9;
+      letter-spacing: -3px;
+    }
+
+    .main-title .accent { color: #FF6600; display: block; }
+
+    .sub-line {
+      font-size: 28px;
+      color: #5a3820;
+      font-weight: 600;
+      margin-top: 24px;
+      line-height: 1.4;
+    }
+
+    .sub-line em { color: #fff; font-style: normal; }
+
+    /* ── DIVIDER ── */
+    .divider {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(255,102,0,.6), rgba(255,102,0,.15), transparent);
+      margin: 0;
+    }
+
+    /* ── STATS ── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      width: 100%;
+    }
+
+    .stat {
+      background: rgba(255,255,255,.022);
+      border: 1px solid rgba(255,102,0,.15);
+      border-radius: 22px;
+      padding: 28px 20px;
+      text-align: center;
+    }
+
+    .stat .num { font-size: 56px; font-weight: 900; color: #FF6600; line-height: 1; margin-bottom: 8px; }
+    .stat .desc { font-size: 18px; color: #5a3820; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; }
+
+    /* ── BOTTOM ── */
+    .bottom {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .cta-text {
+      font-size: 24px;
+      font-weight: 700;
+      color: #3a1a06;
+    }
+
+    .handle {
+      font-size: 26px;
+      font-weight: 800;
+      color: #FF6600;
+      opacity: .78;
+    }
+
+    .play-icon {
+      width: 70px; height: 70px;
+      border-radius: 50%;
+      background: rgba(255,102,0,.12);
+      border: 2px solid rgba(255,102,0,.38);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 28px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <div class="top">
+      <div class="brand">
+        <div class="logo-wrap">
+          <img src="{{LOGO_URL}}" alt="Logo" onerror="this.style.display='none'" />
+        </div>
+        <div class="brand-text">
+          <h1>ODD <span>CIENTÍFICA</span></h1>
+          <p>Análise Estatística</p>
+        </div>
+      </div>
+      <div class="ep-badge">{{DATA_TEXTO}}</div>
+    </div>
+
+    <div class="middle">
+      <div class="eyebrow">🎯 Sniper List</div>
+      <div class="main-title">
+        Sniper
+        <span class="accent">List 🎯</span>
+      </div>
+      <div class="sub-line">
+        <em>{{TOTAL_PICKS}} picks selecionados</em> — favoritos<br/>
+        dominantes identificados por IA
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="num">{{TOTAL_PICKS}}</div>
+        <div class="desc">Picks</div>
+      </div>
+      <div class="stat">
+        <div class="num">{{MERCADO_PRINCIPAL}}</div>
+        <div class="desc">Mercado</div>
+      </div>
+      <div class="stat">
+        <div class="num">{{ODD_MEDIA}}</div>
+        <div class="desc">Odd Média</div>
+      </div>
+    </div>
+
+    <div class="bottom">
+      <div class="cta-text">Assista o Reel completo →</div>
+      <div class="play-icon">▶</div>
+      <div class="handle">@oddcientifica</div>
+    </div>
+
+  </div>
+</body>
+</html>

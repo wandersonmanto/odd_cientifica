@@ -297,6 +297,7 @@ const Simulator: React.FC = () => {
                 <option value="under_35">Under 3.5 FT</option>
                 <option value="under_45">Under 4.5 FT</option>
                 <option value="btts_yes">Ambas Marcam (Sim)</option>
+                <option value="btts_no">Ambas Marcam (Não)</option>
               </select>
             </div>
             <div className="space-y-1.5">
@@ -483,7 +484,10 @@ const Simulator: React.FC = () => {
           { label: 'Over 0.5 HT', ...patterns.over05ht, icon: 'hourglass_top' },
           { label: 'Over 1.5 FT', ...patterns.over15ft, icon: 'looks_two' },
           { label: 'Over 2.5 FT', ...patterns.over25ft, icon: 'looks_3' },
-          { label: 'Ambas Marcam', ...patterns.btts, icon: 'compare_arrows' },
+          { label: 'Under 3.5 FT', ...patterns.under35, icon: 'keyboard_double_arrow_down' },
+          { label: 'Under 4.5 FT', ...patterns.under45, icon: 'keyboard_double_arrow_down' },
+          { label: 'Ambas Marcam (Sim)', ...patterns.btts, icon: 'compare_arrows' },
+          { label: 'Ambas Marcam (Não)', ...patterns.btts_no, icon: 'sync_disabled' },
           { label: 'Casa Vence', ...patterns.homeWin, icon: 'home' },
           { label: 'Visitante Vence', ...patterns.awayWin, icon: 'flight' },
         ].map((pat, i) => (

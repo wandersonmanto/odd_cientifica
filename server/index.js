@@ -234,9 +234,11 @@ app.put('/api/games/:id/result', async (req, res) => {
           case 'under35':  return (hs + as_) < 4;
           case 'under45':  return (hs + as_) < 5;
           case 'btts':     return hs > 0 && as_ > 0;
+          case 'btts_no':  return hs === 0 || as_ === 0;
           default:         return null;
         }
       };
+
 
       for (const pick of pendingPicks) {
         const won = marketResult(pick.market);
@@ -251,12 +253,35 @@ app.put('/api/games/:id/result', async (req, res) => {
       if (pendingPicks.length > 0) {
         console.log(`[picks] ${pendingPicks.length} pick(s) resolvido(s) para game ${id}`);
       }
+
+      // Auto-resolver sniper_picks para o mesmo jogo
+      try {
+        const [pendingSniper] = await pool.execute(
+          'SELECT id, market FROM sniper_picks WHERE game_id = ? AND resolved = 0',
+          [id]
+        );
+        for (const pick of pendingSniper) {
+          const won = marketResult(pick.market);
+          if (won !== null) {
+            await pool.execute(
+              'UPDATE sniper_picks SET resolved = 1, result = ?, resolved_at = NOW() WHERE id = ?',
+              [won ? 1 : 0, pick.id]
+            );
+          }
+        }
+        if (pendingSniper.length > 0) {
+          console.log(`[sniper] ${pendingSniper.length} sniper pick(s) resolvido(s) para game ${id}`);
+        }
+      } catch (sniperErr) {
+        console.warn('[sniper] Erro ao resolver sniper picks:', sniperErr.message);
+      }
     } catch (pickErr) {
       console.warn('[picks] Erro ao resolver picks:', pickErr.message);
       // Não propaga o erro — o resultado do jogo já foi atualizado
     }
 
     res.json({ success: true, updated: result.affectedRows > 0 });
+
   } catch (err) {
     console.error('[result] Erro:', err.message);
     res.status(500).json({ error: err.message });
@@ -419,6 +444,10 @@ app.get('/api/stats/dashboard', async (req, res) => {
         SUM(CASE WHEN odd_btts_yes > 0 THEN 1 ELSE 0 END) AS btts_market_total,
         SUM(CASE WHEN odd_btts_yes > 0 AND home_score > 0 AND away_score > 0 THEN 1 ELSE 0 END) AS btts_wins,
 
+        -- BTTS No
+        SUM(CASE WHEN odd_btts_no > 0 THEN 1 ELSE 0 END) AS btts_no_market_total,
+        SUM(CASE WHEN odd_btts_no > 0 AND (home_score = 0 OR away_score = 0) THEN 1 ELSE 0 END) AS btts_no_wins,
+
         -- Padrões de gols
         SUM(CASE WHEN (home_score + away_score) >= 1 THEN 1 ELSE 0 END) AS over05_count,
         SUM(CASE WHEN (home_score + away_score) >= 2 THEN 1 ELSE 0 END) AS over15_count,
@@ -512,6 +541,12 @@ app.get('/api/stats/dashboard', async (req, res) => {
           win_rate: marketRow.btts_market_total > 0
             ? (Number(marketRow.btts_wins) / Number(marketRow.btts_market_total)) * 100 : 0,
         },
+        btts_no: {
+          total: Number(marketRow.btts_no_market_total),
+          wins: Number(marketRow.btts_no_wins),
+          win_rate: marketRow.btts_no_market_total > 0
+            ? (Number(marketRow.btts_no_wins) / Number(marketRow.btts_no_market_total)) * 100 : 0,
+        },
       },
       patterns: {
         over05_pct: (Number(marketRow.over05_count) / ft) * 100,
@@ -586,6 +621,7 @@ app.post('/api/backtest', async (req, res) => {
     under35:  { odd_col: 'odd_under35',   win_cond: '(home_score + away_score) < 4' },
     under45:  { odd_col: 'odd_under45',   win_cond: '(home_score + away_score) < 5' },
     btts:     { odd_col: 'odd_btts_yes',  win_cond: 'home_score > 0 AND away_score > 0' },
+    btts_no:  { odd_col: 'odd_btts_no',   win_cond: 'home_score = 0 OR away_score = 0' },
   };
 
   const m = marketMap[market];
@@ -855,6 +891,145 @@ app.post('/api/generate-images', async (req, res) => {
 });
 
 
+// ─── Sniper List ───────────────────────────────────────────────────────────────
+
+// Auto-criar tabela sniper_picks se não existir
+pool.execute(`
+  CREATE TABLE IF NOT EXISTS sniper_picks (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    game_id       VARCHAR(64) NOT NULL,
+    pick_date     VARCHAR(20) NOT NULL,
+    market        VARCHAR(32) NOT NULL,
+    odd_used      DECIMAL(6,2) NOT NULL,
+    home_team     VARCHAR(128),
+    away_team     VARCHAR(128),
+    league        VARCHAR(128),
+    country       VARCHAR(64),
+    match_time    VARCHAR(8),
+    resolved      TINYINT(1) NOT NULL DEFAULT 0,
+    result        TINYINT(1) DEFAULT NULL,
+    resolved_at   DATETIME DEFAULT NULL,
+    created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_sp_pick_date (pick_date),
+    INDEX idx_sp_game_id   (game_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+`).then(() => console.log('✅ sniper_picks table ready'))
+  .catch(err => console.warn('[sniper_picks] Criação de tabela:', err.message));
+
+// Listar sniper picks de uma data
+app.get('/api/sniper-picks', async (req, res) => {
+  try {
+    const { date } = req.query;
+    const params = [];
+    let where = '';
+    if (date) { where = 'WHERE sp.pick_date = ?'; params.push(date); }
+
+    const [rows] = await pool.execute(
+      `SELECT sp.*, g.home_score, g.away_score, g.home_score_ht, g.away_score_ht, g.status AS game_status
+       FROM sniper_picks sp
+       LEFT JOIN games g ON g.id = sp.game_id
+       ${where}
+       ORDER BY sp.match_time ASC, sp.created_at ASC`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('[sniper-picks GET] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Salvar sniper pick(s)
+app.post('/api/sniper-picks', async (req, res) => {
+  const picks = Array.isArray(req.body) ? req.body : [req.body];
+  if (!picks.length) return res.status(400).json({ error: 'Payload vazio.' });
+
+  try {
+    const inserted = [];
+    for (const p of picks) {
+      if (!p.game_id || !p.market || !p.odd_used || !p.pick_date) {
+        return res.status(400).json({ error: 'Campos obrigatórios: game_id, market, odd_used, pick_date' });
+      }
+      const [existing] = await pool.execute(
+        'SELECT id FROM sniper_picks WHERE game_id = ? AND market = ?',
+        [p.game_id, p.market]
+      );
+      if (existing.length > 0) {
+        inserted.push({ skipped: true, game_id: p.game_id, market: p.market });
+        continue;
+      }
+      const [result] = await pool.execute(`
+        INSERT INTO sniper_picks (game_id, pick_date, market, odd_used, home_team, away_team, league, country, match_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [p.game_id, p.pick_date, p.market, p.odd_used,
+          p.home_team ?? null, p.away_team ?? null, p.league ?? null, p.country ?? null, p.match_time ?? null]);
+      inserted.push({ id: result.insertId, game_id: p.game_id, market: p.market });
+    }
+    res.json({ success: true, inserted });
+  } catch (err) {
+    console.error('[sniper-picks POST] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remover sniper pick
+app.delete('/api/sniper-picks/:id', async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM sniper_picks WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Estatísticas de sniper picks
+app.get('/api/sniper-picks/stats', async (req, res) => {
+  try {
+    const [[row]] = await pool.execute(`
+      SELECT COUNT(*) AS total, SUM(resolved=1) AS resolved_count, SUM(resolved=0) AS pending_count,
+             SUM(result=1) AS wins, SUM(result=0) AS losses, AVG(odd_used) AS avg_odd
+      FROM sniper_picks
+    `);
+    const total   = Number(row.resolved_count) || 0;
+    const wins    = Number(row.wins) || 0;
+    const losses  = Number(row.losses) || 0;
+    const avgOdd  = parseFloat(Number(row.avg_odd || 0).toFixed(2));
+    const winRate = total > 0 ? parseFloat(((wins / total) * 100).toFixed(2)) : 0;
+    const profit  = wins * (avgOdd - 1) * 100 - losses * 100;
+    const roi     = total > 0 ? parseFloat((profit / (total * 100) * 100).toFixed(2)) : 0;
+    res.json({ total: Number(row.total), resolved: total, pending: Number(row.pending_count) || 0,
+               wins, losses, win_rate: winRate, avg_odd: avgOdd, profit: parseFloat(profit.toFixed(2)), roi });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Gerar imagens para Sniper List
+app.post('/api/sniper/generate-images', async (req, res) => {
+  const { date, types, logo_url = '' } = req.body;
+  if (!date) return res.status(400).json({ error: 'Campo "date" obrigatório.' });
+  try {
+    const [picks] = await pool.execute(
+      `SELECT sp.*, g.home_score, g.away_score, g.home_score_ht, g.away_score_ht, g.status AS game_status
+       FROM sniper_picks sp LEFT JOIN games g ON g.id = sp.game_id
+       WHERE sp.pick_date = ? ORDER BY sp.match_time ASC`,
+      [date]
+    );
+    if (picks.length === 0) return res.status(404).json({ error: `Nenhum sniper pick para ${date}.` });
+    const selectedTypes = Array.isArray(types) && types.length > 0
+      ? types : ['sniper-feed', 'sniper-story', 'sniper-resultado', 'sniper-reel'];
+    const files = await generateImages({ date, picks, types: selectedTypes, logoUrl: logo_url, filePrefix: 'sniper_' });
+    res.json({ success: true, date, files });
+  } catch (err) {
+    console.error('[sniper/generate-images] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Auto-resolver sniper_picks quando resultado de jogo for atualizado
+// (hook inserido no endpoint PUT /api/games/:id/result via monkey-patch listener)
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
   console.log(`   Endpoints disponíveis:`);
@@ -864,4 +1039,6 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/games/:id/exists`);
   console.log(`   POST /api/games/upsert`);
   console.log(`   PUT  /api/games/:id/result`);
+  console.log(`   GET/POST/DELETE /api/sniper-picks`);
+  console.log(`   POST /api/sniper/generate-images`);
 });

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Bookmark, BookmarkCheck, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { GameRecord } from '../types';
 import { getAllGames } from '../src/db/gameRepository';
 import GameAnalysisModal from '../components/GameAnalysisModal';
@@ -15,6 +16,7 @@ const MARKET_OPTIONS = [
   { value: 'under35',  label: 'Under 3.5 FT',           oddKey: 'odd_under35' },
   { value: 'under45',  label: 'Under 4.5 FT',           oddKey: 'odd_under45' },
   { value: 'btts',     label: 'Ambas Marcam (Sim)',      oddKey: 'odd_btts_yes' },
+  { value: 'btts_no',  label: 'Ambas Marcam (Não)',      oddKey: 'odd_btts_no' },
 ] as const;
 
 type MarketValue = typeof MARKET_OPTIONS[number]['value'];
@@ -31,6 +33,7 @@ interface PickPopoverState {
 }
 
 const GameList: React.FC = () => {
+  const navigate = useNavigate();
   const [allGames, setAllGames] = useState<GameRecord[]>([]);
   const [filteredGames, setFilteredGames] = useState<GameRecord[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>('');
@@ -161,8 +164,11 @@ const GameList: React.FC = () => {
 
     setPopover(prev => prev ? { ...prev, saving: true } : null);
 
+    // Se o filtro Favorito Dominante estiver ativo, salva na Sniper List
+    const endpoint = filterLowWin ? `${API}/api/sniper-picks` : `${API}/api/picks`;
+
     try {
-      const res = await fetch(`${API}/api/picks`, {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify([{
@@ -181,6 +187,8 @@ const GameList: React.FC = () => {
       const skipped = data.inserted?.some((i: any) => i.skipped);
       if (skipped) {
         showToast('ℹ️ Pick já estava salvo.', true);
+      } else if (filterLowWin) {
+        showToast(`🎯 Pick salvo na Sniper List: ${game.home_team} vs ${game.away_team}`);
       } else {
         showToast(`✅ Pick salvo: ${game.home_team} vs ${game.away_team}`);
         setSavedPickKeys(prev => [...prev, { game_id: game.id, market: popover.market }]);
@@ -386,15 +394,15 @@ const GameList: React.FC = () => {
                 onClick={() => setFilterLowWin(v => !v)}
                 className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
                   filterLowWin
-                    ? 'bg-primary/10 border-primary/50 text-primary shadow-[0_0_10px_rgba(0,240,168,0.15)]'
-                    : 'bg-background-dark border-border-subtle text-slate-400 hover:border-primary/30 hover:text-primary'
+                    ? 'bg-orange-500/10 border-orange-500/50 text-orange-400 shadow-[0_0_10px_rgba(255,102,0,0.15)]'
+                    : 'bg-background-dark border-border-subtle text-slate-400 hover:border-orange-500/30 hover:text-orange-400'
                 }`}
                 title="Mostra jogos onde a probabilidade de vença de um dos lados é ≤ 15% (favorito técnico dominante)"
               >
                 <span>🎯 Favorito Dominante</span>
                 <span className={`text-[9px] font-normal px-1.5 py-0.5 rounded-full ${
                   filterLowWin
-                    ? 'bg-primary/20 text-primary'
+                    ? 'bg-orange-500/20 text-orange-400'
                     : 'bg-white/5 text-slate-600'
                 }`}>
                   {filterLowWin
@@ -600,9 +608,11 @@ const GameList: React.FC = () => {
                                   <div className="relative inline-block">
                                     <button
                                       onClick={() => openPopover(game.id)}
-                                      title={alreadySaved ? 'Pick já salvo (clique para adicionar outro mercado)' : 'Salvar como pick'}
+                                      title={alreadySaved ? 'Pick já salvo (clique para adicionar outro mercado)' : (filterLowWin ? 'Enviar para Sniper List' : 'Salvar como pick')}
                                       className={`p-0.5 rounded transition-all hover:scale-110 ${
-                                        alreadySaved
+                                        filterLowWin
+                                          ? 'text-orange-400'
+                                          : alreadySaved
                                           ? 'text-amber-400'
                                           : 'text-slate-600 hover:text-amber-400'
                                       }`}
@@ -617,11 +627,15 @@ const GameList: React.FC = () => {
                                     {isPopoverOpen && (
                                       <div
                                         ref={popoverRef}
-                                        className="absolute left-6 top-0 z-50 bg-surface border border-border-subtle rounded-xl shadow-2xl p-4 w-64"
+                                        className={`absolute left-6 top-0 z-50 bg-surface border rounded-xl shadow-2xl p-4 w-64 ${
+                                          filterLowWin ? 'border-orange-500/30' : 'border-border-subtle'
+                                        }`}
                                         style={{ minWidth: '256px' }}
                                       >
                                         <div className="flex items-center justify-between mb-3">
-                                          <span className="text-xs font-bold text-white">Salvar Pick</span>
+                                          <span className="text-xs font-bold text-white">
+                                            {filterLowWin ? '🎯 Sniper List' : 'Salvar Pick'}
+                                          </span>
                                           <button onClick={() => setPopover(null)} className="text-slate-500 hover:text-white">
                                             <X className="w-3.5 h-3.5" />
                                           </button>
@@ -653,9 +667,15 @@ const GameList: React.FC = () => {
                                           const mObj = MARKET_OPTIONS.find(o => o.value === popover.market)!;
                                           const oddVal = game[mObj.oddKey as keyof GameRecord] as number;
                                           return oddVal && oddVal > 0 ? (
-                                            <div className="flex items-center justify-between mb-3 bg-primary/5 border border-primary/20 rounded-lg px-3 py-2">
+                                            <div className={`flex items-center justify-between mb-3 rounded-lg px-3 py-2 ${
+                                              filterLowWin
+                                                ? 'bg-orange-500/5 border border-orange-500/20'
+                                                : 'bg-primary/5 border border-primary/20'
+                                            }`}>
                                               <span className="text-[10px] text-slate-400">Odd selecionada</span>
-                                              <span className="text-sm font-bold font-mono text-primary">{oddVal.toFixed(2)}</span>
+                                              <span className={`text-sm font-bold font-mono ${
+                                                filterLowWin ? 'text-orange-400' : 'text-primary'
+                                              }`}>{oddVal.toFixed(2)}</span>
                                             </div>
                                           ) : (
                                             <div className="mb-3 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 text-[10px] text-red-400">
@@ -674,10 +694,16 @@ const GameList: React.FC = () => {
                                         <button
                                           onClick={handleSavePick}
                                           disabled={popover.saving}
-                                          className="w-full h-9 bg-primary text-background-dark font-bold text-xs rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 shadow-[0_0_10px_rgba(36,255,189,0.2)]"
+                                          className={`w-full h-9 font-bold text-xs rounded-lg hover:brightness-110 transition-all disabled:opacity-50 flex items-center justify-center gap-1.5 ${
+                                            filterLowWin
+                                              ? 'bg-orange-500 text-white shadow-[0_0_10px_rgba(255,102,0,0.3)]'
+                                              : 'bg-primary text-background-dark shadow-[0_0_10px_rgba(36,255,189,0.2)]'
+                                          }`}
                                         >
                                           {popover.saving ? (
                                             <>Salvando…</>
+                                          ) : filterLowWin ? (
+                                            <>🎯 Sniper List</>
                                           ) : (
                                             <><BookmarkCheck className="w-3.5 h-3.5" /> Salvar Pick</>
                                           )}

@@ -7,6 +7,7 @@ import Strategies from './pages/Strategies';
 import GameList from './pages/GameList';
 import CompoundOdds from './pages/CompoundOdds';
 import DaySelection from './pages/DaySelection';
+import SniperList from './pages/SniperList';
 
 const Header: React.FC = () => {
   const location = useLocation();
@@ -36,6 +37,11 @@ const Header: React.FC = () => {
           <Link to="/import" className={getLinkClass('/import')}>Importação</Link>
           <Link to="/games" className={getLinkClass('/games')}>Lista de Jogos</Link>
           <Link to="/day-selection" className={getLinkClass('/day-selection')}>⭐ Seleção do Dia</Link>
+          <Link to="/sniper-list" className={
+            location.pathname === '/sniper-list'
+              ? 'text-orange-400 text-sm font-semibold border-b-2 border-orange-400 pb-1 transition-all'
+              : 'text-slate-400 hover:text-orange-400 text-sm font-medium transition-colors pb-1 border-b-2 border-transparent'
+          }>🎯 Sniper List</Link>
           <Link to="/simulator" className={getLinkClass('/simulator')}>Simulador</Link>
           <Link to="/strategies" className={getLinkClass('/strategies')}>Estratégias</Link>
           <Link to="/compound" className={getLinkClass('/compound')}>Juros Compostos</Link>
@@ -78,6 +84,7 @@ const App: React.FC = () => {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/games" element={<GameList />} />
             <Route path="/day-selection" element={<DaySelection />} />
+            <Route path="/sniper-list" element={<SniperList />} />
             <Route path="/simulator" element={<Simulator />} />
             <Route path="/import" element={<ImportData />} />
             <Route path="/strategies" element={<Strategies />} />
