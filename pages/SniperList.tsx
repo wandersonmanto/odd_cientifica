@@ -285,7 +285,7 @@ const SniperList: React.FC = () => {
               const resolved = todayPicks.filter(p => p.resolved);
               const wins = resolved.filter(p => p.result).length;
               const losses = resolved.length - wins;
-              const avgOdd = resolved.reduce((s, p) => s + p.odd_used, 0) / resolved.length;
+              const avgOdd = resolved.reduce((s, p) => s + Number(p.odd_used), 0) / resolved.length;
               const profit = wins * (avgOdd - 1) * 100 - losses * 100;
               const winRate = (wins / resolved.length) * 100;
               return (
