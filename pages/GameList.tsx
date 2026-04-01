@@ -8,18 +8,178 @@ import GameAnalysisModal from '../components/GameAnalysisModal';
 const API = 'http://localhost:3001';
 
 const MARKET_OPTIONS = [
-  { value: 'home',     label: 'Match Odds — Casa',      oddKey: 'odd_home' },
-  { value: 'away',     label: 'Match Odds — Visitante', oddKey: 'odd_away' },
-  { value: 'over05ht', label: 'Over 0.5 HT',            oddKey: 'odd_over05_ht' },
-  { value: 'over15',   label: 'Over 1.5 FT',            oddKey: 'odd_over15' },
-  { value: 'over25',   label: 'Over 2.5 FT',            oddKey: 'odd_over25' },
-  { value: 'under35',  label: 'Under 3.5 FT',           oddKey: 'odd_under35' },
-  { value: 'under45',  label: 'Under 4.5 FT',           oddKey: 'odd_under45' },
-  { value: 'btts',     label: 'Ambas Marcam (Sim)',      oddKey: 'odd_btts_yes' },
-  { value: 'btts_no',  label: 'Ambas Marcam (Não)',      oddKey: 'odd_btts_no' },
+  { value: 'home',     label: 'Match Odds — Casa',      oddKey: 'odd_home',      short: 'Casa'   },
+  { value: 'away',     label: 'Match Odds — Visitante', oddKey: 'odd_away',      short: 'Fora'   },
+  { value: 'over05ht', label: 'Over 0.5 HT',            oddKey: 'odd_over05_ht', short: '0.5 HT' },
+  { value: 'over15',   label: 'Over 1.5 FT',            oddKey: 'odd_over15',    short: 'Ov 1.5' },
+  { value: 'over25',   label: 'Over 2.5 FT',            oddKey: 'odd_over25',    short: 'Ov 2.5' },
+  { value: 'under35',  label: 'Under 3.5 FT',           oddKey: 'odd_under35',   short: 'Un 3.5' },
+  { value: 'under45',  label: 'Under 4.5 FT',           oddKey: 'odd_under45',   short: 'Un 4.5' },
+  { value: 'btts',     label: 'Ambas Marcam (Sim)',      oddKey: 'odd_btts_yes',  short: 'BTTS S' },
+  { value: 'btts_no',  label: 'Ambas Marcam (Não)',      oddKey: 'odd_btts_no',   short: 'BTTS N' },
 ] as const;
 
 type MarketValue = typeof MARKET_OPTIONS[number]['value'];
+
+interface BestMarket {
+  market: string;
+  oddKey: string;
+  short: string;
+  ev: number;
+  prob: number;      // probabilidade estimada pelo modelo Poisson (0-1)
+  xg_home: number;  // gols esperados casa
+  xg_away: number;  // gols esperados fora
+}
+
+// ─── Modelo de Poisson para previsão de resultados ────────────────────────────
+
+/** PMF de Poisson: P(X = k | λ) */
+function poissonPMF(k: number, lambda: number): number {
+  if (lambda <= 0) return k === 0 ? 1 : 0;
+  let logP = -lambda;
+  for (let i = 1; i <= k; i++) logP += Math.log(lambda / i);
+  return Math.exp(logP);
+}
+
+interface GameProbabilities {
+  home: number; away: number;
+  over05ht: number; over15: number; over25: number;
+  under35: number; under45: number;
+  btts: number; btts_no: number;
+}
+
+/**
+ * Calcula probabilidades de mercado via distribuição de Poisson,
+ * usando os stats específicos da partida (gols, eficiência, ranking, médias da liga).
+ */
+function computeGameProbabilities(game: GameRecord): { probs: GameProbabilities; xgHome: number; xgAway: number } | null {
+  const leagueAvgGoals = game.global_goals_league || game.global_goals_match || 2.5;
+  const perTeam = leagueAvgGoals / 2 || 1.25;
+
+  // Exige que TODOS os 4 stats de gols sejam presentes e > 0.
+  // Qualquer zero ou nulo → dado ausente → descarta o jogo do cálculo.
+  const scoredH   = game.avg_goals_scored_home;
+  const concededH = game.avg_goals_conceded_home;
+  const scoredA   = game.avg_goals_scored_away;
+  const concededA = game.avg_goals_conceded_away;
+
+  if (!scoredH || !concededH || !scoredA || !concededA) return null;
+
+  // Força de ataque/defesa relativa à média da liga
+  const atkH = scoredH   / perTeam;
+  const defH = concededH / perTeam;
+  const atkA = scoredA   / perTeam;
+  const defA = concededA / perTeam;
+
+  // λ = ataque × defesa adversária × média_liga × fator_vantagem_casa
+  const HOME_ADV = 1.12;
+  let xgHome = Math.max(0.15, atkH * defA * perTeam * HOME_ADV);
+  let xgAway = Math.max(0.15, atkA * defH * perTeam);
+
+  // Ajuste por eficiência — apenas quando disponível e ambos os times têm dado
+  const effH = game.efficiency_home;
+  const effA = game.efficiency_away;
+  if (effH != null && effH > 0 && effA != null && effA > 0) {
+    // Normaliza: 50 = neutro → fator 1.0; limita entre 0.7 e 1.4
+    const fH = Math.max(0.7, Math.min(1.4, 0.5 + effH / 100));
+    const fA = Math.max(0.7, Math.min(1.4, 0.5 + effA / 100));
+    xgHome = Math.max(0.15, xgHome * fH);
+    xgAway = Math.max(0.15, xgAway * fA);
+  }
+
+  // Matriz de probabilidades conjunta P(home=i, away=j)
+  const MAX = 10;
+  const pH: number[] = [], pA: number[] = [];
+  for (let k = 0; k <= MAX; k++) {
+    pH.push(poissonPMF(k, xgHome));
+    pA.push(poissonPMF(k, xgAway));
+  }
+
+  let pHome = 0, pAway = 0, pOver15 = 0, pOver25 = 0;
+  let pUnder35 = 0, pUnder45 = 0, pBtts = 0;
+
+  for (let i = 0; i <= MAX; i++) {
+    for (let j = 0; j <= MAX; j++) {
+      const p = pH[i] * pA[j];
+      const tot = i + j;
+      if (i > j) pHome    += p;
+      if (j > i) pAway    += p;
+      if (tot > 1.5) pOver15  += p;
+      if (tot > 2.5) pOver25  += p;
+      if (tot < 3.5) pUnder35 += p;
+      if (tot < 4.5) pUnder45 += p;
+      if (i > 0 && j > 0) pBtts += p;
+    }
+  }
+
+  // Over 0.5 HT: ~45% dos gols no 1º tempo
+  const pOver05HT = 1 - poissonPMF(0, xgHome * 0.45) * poissonPMF(0, xgAway * 0.45);
+
+  return {
+    probs: {
+      home: pHome, away: pAway,
+      over05ht: pOver05HT, over15: pOver15, over25: pOver25,
+      under35: pUnder35, under45: pUnder45,
+      btts: pBtts, btts_no: 1 - pBtts,
+    },
+    xgHome,
+    xgAway,
+  };
+}
+
+/**
+ * Threshold mínimo de probabilidade por tipo de mercado.
+ * Resultados (home/away) exigem mais certeza que gols/btts porque são menos
+ * frequentes e a variância é maior. Impede que long-shots com EV inflado
+ * por dados esparsos sejam selecionados.
+ */
+const MIN_PROB: Record<string, number> = {
+  home:     0.50,   // vitória casa  → min 50%
+  away:     0.50,   // vitória fora  → min 50%
+  over05ht: 0.65,   // gol no HT     → min 65%
+  over15:   0.60,   // over 1.5      → min 60%
+  over25:   0.45,   // over 2.5      → min 45%
+  under35:  0.55,   // under 3.5     → min 55%
+  under45:  0.65,   // under 4.5     → min 65%
+  btts:     0.45,   // ambas marcam  → min 45%
+  btts_no:  0.45,   // não ambas     → min 45%
+};
+
+/**
+ * Para cada mercado disponível, calcula EV = P_modelo × odd − 1 e retorna o melhor,
+ * respeitando threshold de probabilidade mínima por mercado.
+ */
+function getBestMarket(game: GameRecord): BestMarket | null {
+  const result = computeGameProbabilities(game);
+  if (!result) return null;
+  const { probs, xgHome, xgAway } = result;
+
+  let best: BestMarket | null = null;
+  let bestEV = 0;
+
+  for (const market of MARKET_OPTIONS) {
+    const odd = game[market.oddKey as keyof GameRecord] as number;
+    if (!odd || odd <= 0) continue;
+
+    // Validação cruzada com o mercado: para resultados (home/away), a odd máxima
+    // é 4.5 (implied prob ≥ 22%). Se o mercado já precificou o time como grande
+    // azarão, nossos dados raramente são confiáveis o suficiente para contradizer.
+    if ((market.value === 'home' || market.value === 'away') && odd > 4.5) continue;
+
+    const prob = probs[market.value as keyof GameProbabilities] ?? 0;
+
+    // Descarta mercados abaixo do threshold — evita long-shots com EV inflado
+    const minProb = MIN_PROB[market.value] ?? 0.45;
+    if (prob < minProb) continue;
+
+    const ev = prob * odd - 1;
+    if (ev > bestEV) {
+      bestEV = ev;
+      best = { market: market.value, oddKey: market.oddKey, short: market.short, ev, prob, xg_home: xgHome, xg_away: xgAway };
+    }
+  }
+  return best;
+}
 
 interface SavedPickKey {
   game_id: string;
@@ -69,6 +229,15 @@ const GameList: React.FC = () => {
   const [popover, setPopover] = useState<PickPopoverState | null>(null);
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Market Insights — toggle coluna EV%
+  const [showEvColumn, setShowEvColumn] = useState(false);
+
+  // Top picks — ocultar/exibir painel
+  const [showTopPicks, setShowTopPicks] = useState(true);
+
+  // Top 3 do dia — navegação e highlight
+  const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -339,6 +508,62 @@ const GameList: React.FC = () => {
     paginatedGames.some(g => g.id === p.game_id)
   ).length;
 
+  // Mapa game.id → BestMarket para os jogos da página atual
+  const bestMarketMap = useMemo(() => {
+    const map = new Map<string, BestMarket>();
+    for (const game of paginatedGames) {
+      const best = getBestMarket(game);
+      if (best) map.set(game.id, best);
+    }
+    return map;
+  }, [paginatedGames]);
+
+  // Top 3 do dia — melhores EVs de todos os jogos da data selecionada.
+  // Requisito: odd do mercado recomendado > 1.30 (evita odds muito baixas que
+  // não valem o risco e long-shots que inflam EV artificialmente).
+  const top3 = useMemo(() => {
+    const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
+    for (const game of filteredGames) {
+      const best = getBestMarket(game);
+      if (!best) continue;
+      const oddVal = game[best.oddKey as keyof GameRecord] as number;
+      if (!oddVal || oddVal <= 1.30) continue;
+      candidates.push({ game, best, odd: oddVal });
+    }
+    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
+  }, [filteredGames]);
+
+  // Navega para a linha do jogo na tabela (troca de página se necessário + scroll)
+  const navigateToGame = (gameId: string) => {
+    const idx = processedGames.findIndex(g => g.id === gameId);
+    if (idx >= 0) {
+      setCurrentPage(Math.floor(idx / gamesPerPage) + 1);
+    }
+    setHighlightedGameId(gameId);
+    setTimeout(() => {
+      document.getElementById(`game-row-${gameId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  };
+
+  // Retorna a classe CSS correta para uma célula de odd:
+  // viola → melhor mercado histórico, âmbar → filtro de range, padrão → sem destaque.
+  const getOddClass = (gameId: string, oddKey: string, oddVal: number | null | undefined, defaultClass: string): string => {
+    const best = bestMarketMap.get(gameId);
+    if (best?.oddKey === oddKey) {
+      return 'text-violet-300 font-bold bg-violet-500/15 ring-1 ring-inset ring-violet-500/40';
+    }
+    if (isOddHighlighted(oddVal as number)) {
+      return 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40';
+    }
+    return defaultClass;
+  };
+
+  const getBestMarketTooltip = (gameId: string, oddKey: string): string | undefined => {
+    const best = bestMarketMap.get(gameId);
+    if (!best || best.oddKey !== oddKey) return undefined;
+    return `Melhor mercado (modelo Poisson)\nProb. estimada: ${(best.prob * 100).toFixed(1)}%\nEV: +${(best.ev * 100).toFixed(1)}% edge\nxG Casa: ${best.xg_home.toFixed(2)} | xG Fora: ${best.xg_away.toFixed(2)}`;
+  };
+
   // Modal de análise
   const [analysisGame, setAnalysisGame] = useState<GameRecord | null>(null);
 
@@ -410,6 +635,29 @@ const GameList: React.FC = () => {
                     : '≤ 15%'
                   }
                 </span>
+              </button>
+            </div>
+
+            {/* Toggle EV% Column */}
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Edge</span>
+              <button
+                onClick={() => setShowEvColumn(v => !v)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-bold transition-all ${
+                  showEvColumn
+                    ? 'bg-violet-500/10 border-violet-500/50 text-violet-300 shadow-[0_0_10px_rgba(139,92,246,0.15)]'
+                    : 'bg-background-dark border-border-subtle text-slate-400 hover:border-violet-500/30 hover:text-violet-300'
+                }`}
+                title="Mostra coluna EV% — edge histórico do melhor mercado por jogo"
+              >
+                <span>Edge EV%</span>
+                {(
+                  <span className={`text-[9px] font-normal px-1.5 py-0.5 rounded-full ${
+                    showEvColumn ? 'bg-violet-500/20 text-violet-300' : 'bg-white/5 text-slate-600'
+                  }`}>
+                    {showEvColumn ? 'visível' : 'oculto'}
+                  </span>
+                )}
               </button>
             </div>
 
@@ -506,6 +754,89 @@ const GameList: React.FC = () => {
         </div>
       </div>
 
+      {/* ─── Top 5 do Dia ──────────────────────────────────────────────────────── */}
+      {top3.length > 0 && (
+        <div className="bg-surface border border-violet-500/20 rounded-xl shadow-xl overflow-hidden">
+          {/* Header sempre visível */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-violet-500/10">
+            <span className="text-sm font-bold text-white">Top {top3.length} do Dia</span>
+            <span className="text-[10px] text-slate-500">— maior edge por modelo Poisson ({filteredGames.length} analisados)</span>
+            <button
+              onClick={() => setShowTopPicks(v => !v)}
+              className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+            >
+              {showTopPicks ? 'Ocultar ▲' : 'Exibir ▼'}
+            </button>
+          </div>
+
+          {/* Cards — colapsáveis */}
+          {showTopPicks && (
+          <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {top3.map(({ game, best, odd }, i: number) => {
+              const isActive = highlightedGameId === game.id;
+              const medal = ['🥇', '🥈', '🥉', '4°', '5°'][i];
+              return (
+                <button
+                  key={game.id}
+                  onClick={() => navigateToGame(game.id)}
+                  className={`text-left p-3 rounded-xl border transition-all group ${
+                    isActive
+                      ? 'bg-violet-500/15 border-violet-500/50 shadow-[0_0_16px_rgba(139,92,246,0.2)]'
+                      : 'bg-background-dark border-border-subtle hover:border-violet-500/40 hover:bg-violet-500/5'
+                  }`}
+                >
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm">{medal}</span>
+                    <span className="text-xs font-bold text-violet-300 font-mono bg-violet-500/10 px-2 py-0.5 rounded-full">
+                      +{(best.ev * 100).toFixed(1)}% EV
+                    </span>
+                  </div>
+
+                  {/* Teams */}
+                  <p className="text-xs font-bold text-white truncate leading-tight">
+                    {game.home_team} <span className="text-slate-500 font-normal">v</span> {game.away_team}
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate mb-2">{game.country} — {game.league}</p>
+
+                  {/* Market + Stats */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-slate-500 font-mono">{game.match_time}</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-violet-500/20 text-violet-300 border border-violet-500/30">
+                      {best.short}
+                    </span>
+                    <span className="text-[9px] font-mono font-bold text-white">
+                      @{odd.toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {(best.prob * 100).toFixed(0)}% prob
+                    </span>
+                  </div>
+
+                  {/* xG */}
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                    <span>xG</span>
+                    <span className="text-slate-400">{best.xg_home.toFixed(2)}</span>
+                    <span>—</span>
+                    <span className="text-slate-400">{best.xg_away.toFixed(2)}</span>
+                  </div>
+
+                  {/* Localizar hint */}
+                  <div className={`mt-2 text-[9px] font-medium transition-colors ${
+                    isActive ? 'text-violet-400' : 'text-slate-600 group-hover:text-violet-400'
+                  }`}>
+                    {isActive ? '→ localizado na lista' : 'clique para localizar'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          </div>
+          )}
+        </div>
+      )}
+
       <div className="bg-surface border border-border-subtle rounded-xl overflow-hidden shadow-xl">
         <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse whitespace-nowrap">
@@ -531,6 +862,11 @@ const GameList: React.FC = () => {
                           </>
                         )}
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[200px]">Partida</th>
+                        {showEvColumn && (
+                          <th className="px-2 py-2 border-b border-border-subtle text-center text-violet-400/70 bg-violet-500/5 whitespace-nowrap" title="EV% do melhor mercado histórico">
+                            Edge EV%
+                          </th>
+                        )}
                         <th className="px-2 py-2 border-b border-border-subtle min-w-[120px]">Liga</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">Status</th>
                         <th className="px-1 py-2 border-b border-border-subtle text-center">FT</th>
@@ -601,8 +937,17 @@ const GameList: React.FC = () => {
                         paginatedGames.map((game) => {
                           const alreadySaved = isPickSaved(game.id);
                           const isPopoverOpen = popover?.gameId === game.id;
+                          const isTop3Highlighted = highlightedGameId === game.id;
                           return (
-                            <tr key={game.id} className={`hover:bg-white/5 transition-colors relative ${alreadySaved ? 'bg-amber-400/5' : ''}`}>
+                            <tr
+                              key={game.id}
+                              id={`game-row-${game.id}`}
+                              className={`hover:bg-white/5 transition-colors relative ${
+                                isTop3Highlighted
+                                  ? 'bg-violet-500/10 outline outline-1 outline-violet-500/40'
+                                  : alreadySaved ? 'bg-amber-400/5' : ''
+                              }`}
+                            >
                                 {/* Bookmark button cell */}
                                 <td className="px-1 py-1.5 text-center sticky left-0 bg-inherit z-20">
                                   <div className="relative inline-block">
@@ -744,7 +1089,30 @@ const GameList: React.FC = () => {
                                     onClick={() => setAnalysisGame(game)}
                                 >
                                     {game.home_team} <span className="text-slate-500 mx-0.5">v</span> {game.away_team}
+                                    {(() => {
+                                      const best = bestMarketMap.get(game.id);
+                                      if (!best) return null;
+                                      return (
+                                        <span className="ml-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30 align-middle whitespace-nowrap">
+                                          {best.short}
+                                        </span>
+                                      );
+                                    })()}
                                 </td>
+                                {showEvColumn && (() => {
+                                  const best = bestMarketMap.get(game.id);
+                                  return (
+                                    <td className="px-2 py-1.5 text-center bg-violet-500/5">
+                                      {best ? (
+                                        <span className="text-[10px] font-bold text-violet-300 font-mono">
+                                          +{(best.ev * 100).toFixed(1)}%
+                                        </span>
+                                      ) : (
+                                        <span className="text-[10px] text-slate-600">—</span>
+                                      )}
+                                    </td>
+                                  );
+                                })()}
                                 <td className="px-2 py-1.5 text-slate-400 truncate max-w-[120px]" title={`${game.country} - ${game.league}`}>{game.country} - {game.league}</td>
                                 <td className="px-1 py-1.5 text-center font-mono text-slate-500">{game.status}</td>
                                 <td className="px-1 py-1.5 text-center font-bold text-white bg-background-dark/30">
@@ -754,21 +1122,21 @@ const GameList: React.FC = () => {
                                     {game.home_score_ht !== null ? `${game.home_score_ht}-${game.away_score_ht}` : '-'}
                                 </td>
 
-                                {/* Odds — highlighted when within filter range */}
-                                <td className={`px-1 py-1.5 text-center font-mono border-l border-border-subtle bg-primary/5 ${isOddHighlighted(game.odd_home) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_home)}</td>
+                                {/* Odds — viola=melhor mercado histórico, âmbar=filtro range */}
+                                <td className={`px-1 py-1.5 text-center font-mono border-l border-border-subtle ${getOddClass(game.id, 'odd_home', game.odd_home, 'text-primary bg-primary/5')}`} title={getBestMarketTooltip(game.id, 'odd_home')}>{fmt(game.odd_home)}</td>
                                 <td className={`px-1 py-1.5 text-center font-mono bg-primary/5 ${isOddHighlighted(game.odd_draw) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_draw)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono border-r border-border-subtle bg-primary/5 ${isOddHighlighted(game.odd_away) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-primary'}`}>{fmt(game.odd_away)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono border-r border-border-subtle ${getOddClass(game.id, 'odd_away', game.odd_away, 'text-primary bg-primary/5')}`} title={getBestMarketTooltip(game.id, 'odd_away')}>{fmt(game.odd_away)}</td>
 
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over05_ht) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over05_ht)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_over05_ht', game.odd_over05_ht, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_over05_ht')}>{fmt(game.odd_over05_ht)}</td>
                                 <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over05) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over05)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over15) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over15)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_over25) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_over25)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_over15', game.odd_over15, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_over15')}>{fmt(game.odd_over15)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_over25', game.odd_over25, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_over25')}>{fmt(game.odd_over25)}</td>
                                 <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under15) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under15)}</td>
                                 <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under25) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under25)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under35) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under35)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_under45) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_under45)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_btts_yes) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_btts_yes)}</td>
-                                <td className={`px-1 py-1.5 text-center font-mono ${isOddHighlighted(game.odd_btts_no) ? 'text-amber-300 font-bold bg-amber-400/10 ring-1 ring-inset ring-amber-400/40' : 'text-slate-300'}`}>{fmt(game.odd_btts_no)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_under35', game.odd_under35, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_under35')}>{fmt(game.odd_under35)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_under45', game.odd_under45, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_under45')}>{fmt(game.odd_under45)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_btts_yes', game.odd_btts_yes, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_btts_yes')}>{fmt(game.odd_btts_yes)}</td>
+                                <td className={`px-1 py-1.5 text-center font-mono ${getOddClass(game.id, 'odd_btts_no', game.odd_btts_no, 'text-slate-300')}`} title={getBestMarketTooltip(game.id, 'odd_btts_no')}>{fmt(game.odd_btts_no)}</td>
 
                                 {/* Stats */}
                                 <td className="px-1 py-1.5 text-center font-mono text-slate-400 border-l border-border-subtle bg-slate-800/30">{fmt(game.efficiency_home)}</td>

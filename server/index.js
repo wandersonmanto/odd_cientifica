@@ -1030,6 +1030,120 @@ app.post('/api/sniper/generate-images', async (req, res) => {
 // (hook inserido no endpoint PUT /api/games/:id/result via monkey-patch listener)
 
 
+// ─── Market Insights (melhor mercado por jogo) ────────────────────────────────
+
+/**
+ * Cache simples em memória — dados históricos não mudam durante uma sessão.
+ * TTL de 30 minutos.
+ */
+let insightsCache = { data: null, expiry: 0 };
+
+/**
+ * GET /api/market-insights
+ *
+ * Retorna, para cada liga×país, os win rates históricos de todos os mercados
+ * disponíveis (jogos com status='FT' e placar preenchido).
+ *
+ * O frontend usa esses dados para calcular:
+ *   EV = (win_rate / 100) × odd_atual − 1
+ * e destacar a célula com o maior EV positivo de cada jogo.
+ *
+ * Shape: { insights: { "Liga|País": { over15: { win_rate, total, avg_odd }, ... } }, ... }
+ */
+app.get('/api/market-insights', async (req, res) => {
+  try {
+    // Servir do cache se ainda válido
+    if (Date.now() < insightsCache.expiry && insightsCache.data) {
+      return res.json({ ...insightsCache.data, cache_age_s: Math.round((insightsCache.expiry - Date.now()) / 1000) });
+    }
+
+    // Definição de mercados: { chave, coluna de odd, condição de vitória }
+    const MARKETS = [
+      { key: 'home',     col: 'odd_home',      win: 'home_score > away_score' },
+      { key: 'away',     col: 'odd_away',      win: 'away_score > home_score' },
+      { key: 'over05ht', col: 'odd_over05_ht', win: '(home_score_ht + away_score_ht) > 0' },
+      { key: 'over15',   col: 'odd_over15',    win: '(home_score + away_score) > 1' },
+      { key: 'over25',   col: 'odd_over25',    win: '(home_score + away_score) > 2' },
+      { key: 'under35',  col: 'odd_under35',   win: '(home_score + away_score) < 4' },
+      { key: 'under45',  col: 'odd_under45',   win: '(home_score + away_score) < 5' },
+      { key: 'btts',     col: 'odd_btts_yes',  win: 'home_score > 0 AND away_score > 0' },
+      { key: 'btts_no',  col: 'odd_btts_no',   win: 'home_score = 0 OR away_score = 0' },
+    ];
+
+    // Monta uma única query com todos os mercados agregados por liga+país
+    // para evitar múltiplos roundtrips ao banco.
+    const selectCols = MARKETS.map(({ key, col, win }) => `
+      SUM(CASE WHEN ${col} > 0 THEN 1 ELSE 0 END)                              AS ${key}_total,
+      SUM(CASE WHEN ${col} > 0 AND (${win}) THEN 1 ELSE 0 END)                 AS ${key}_wins,
+      AVG(CASE WHEN ${col} > 0 THEN ${col} ELSE NULL END)                      AS ${key}_avg_odd
+    `).join(',');
+
+    const [rows] = await pool.execute(`
+      SELECT
+        league,
+        country,
+        COUNT(*) AS league_total,
+        ${selectCols}
+      FROM games
+      WHERE status = 'FT'
+        AND home_score IS NOT NULL
+        AND away_score IS NOT NULL
+      GROUP BY league, country
+      HAVING COUNT(*) >= 5
+      ORDER BY league ASC
+    `);
+
+    // Transforma em mapa: "Liga|País" -> { market: { win_rate, total, avg_odd } }
+    const insights = {};
+    for (const row of rows) {
+      const leagueKey = `${row.league}|${row.country}`;
+      const marketData = {};
+
+      for (const { key } of MARKETS) {
+        const total  = Number(row[`${key}_total`])   || 0;
+        const wins   = Number(row[`${key}_wins`])    || 0;
+        const avgOdd = parseFloat(Number(row[`${key}_avg_odd`] || 0).toFixed(3));
+
+        if (total >= 5) { // mínimo de amostra por mercado também
+          marketData[key] = {
+            win_rate: parseFloat(((wins / total) * 100).toFixed(2)),
+            total,
+            avg_odd: avgOdd,
+          };
+        }
+      }
+
+      if (Object.keys(marketData).length > 0) {
+        insights[leagueKey] = {
+          league_total: Number(row.league_total),
+          markets: marketData,
+        };
+      }
+    }
+
+    const result = {
+      total_leagues: Object.keys(insights).length,
+      generated_at: new Date().toISOString(),
+      cache_age_s: 1800,
+      insights,
+    };
+
+    // Armazena no cache por 30 minutos
+    insightsCache = { data: result, expiry: Date.now() + 30 * 60 * 1000 };
+    console.log(`[market-insights] Cache atualizado: ${result.total_leagues} ligas processadas.`);
+
+    res.json(result);
+  } catch (err) {
+    console.error('[market-insights] Erro:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Invalidar cache de insights quando novos dados forem inseridos/atualizados
+// (chamado internamente após upsert e após atualização de resultado)
+const invalidateInsightsCache = () => { insightsCache.expiry = 0; };
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando em http://localhost:${PORT}`);
   console.log(`   Endpoints disponíveis:`);
@@ -1039,6 +1153,7 @@ app.listen(PORT, () => {
   console.log(`   GET  /api/games/:id/exists`);
   console.log(`   POST /api/games/upsert`);
   console.log(`   PUT  /api/games/:id/result`);
+  console.log(`   GET  /api/market-insights`);
   console.log(`   GET/POST/DELETE /api/sniper-picks`);
   console.log(`   POST /api/sniper/generate-images`);
 });
