@@ -236,6 +236,9 @@ const GameList: React.FC = () => {
   // Top picks — ocultar/exibir painel
   const [showTopPicks, setShowTopPicks] = useState(true);
 
+  // Top 5 odds baixas (1.25–1.34) — ocultar/exibir painel
+  const [showTopLowOdds, setShowTopLowOdds] = useState(true);
+
   // Top 3 do dia — navegação e highlight
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
@@ -533,6 +536,19 @@ const GameList: React.FC = () => {
     return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
   }, [filteredGames]);
 
+  // Top 5 odds baixas — mercado recomendado entre 1.25 e 1.34 (alta confiança)
+  const topLowOdds = useMemo(() => {
+    const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
+    for (const game of filteredGames) {
+      const best = getBestMarket(game);
+      if (!best) continue;
+      const oddVal = game[best.oddKey as keyof GameRecord] as number;
+      if (!oddVal || oddVal < 1.25 || oddVal > 1.34) continue;
+      candidates.push({ game, best, odd: oddVal });
+    }
+    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
+  }, [filteredGames]);
+
   // Navega para a linha do jogo na tabela (troca de página se necessário + scroll)
   const navigateToGame = (gameId: string) => {
     const idx = processedGames.findIndex(g => g.id === gameId);
@@ -825,6 +841,82 @@ const GameList: React.FC = () => {
                   {/* Localizar hint */}
                   <div className={`mt-2 text-[9px] font-medium transition-colors ${
                     isActive ? 'text-violet-400' : 'text-slate-600 group-hover:text-violet-400'
+                  }`}>
+                    {isActive ? '→ localizado na lista' : 'clique para localizar'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Top 5 Odds Baixas (1.25–1.34) ─────────────────────────────────────── */}
+      {topLowOdds.length > 0 && (
+        <div className="bg-surface border border-emerald-500/20 rounded-xl shadow-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/10">
+            <span className="text-sm font-bold text-white">Top {topLowOdds.length} Alta Confiança</span>
+            <span className="text-[10px] text-slate-500">— odds 1.25–1.34 · maior EV por modelo Poisson</span>
+            <button
+              onClick={() => setShowTopLowOdds(v => !v)}
+              className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+            >
+              {showTopLowOdds ? 'Ocultar ▲' : 'Exibir ▼'}
+            </button>
+          </div>
+
+          {showTopLowOdds && (
+          <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {topLowOdds.map(({ game, best, odd }, i: number) => {
+              const isActive = highlightedGameId === game.id;
+              const medal = ['🥇', '🥈', '🥉', '4°', '5°'][i];
+              return (
+                <button
+                  key={game.id}
+                  onClick={() => navigateToGame(game.id)}
+                  className={`text-left p-3 rounded-xl border transition-all group ${
+                    isActive
+                      ? 'bg-emerald-500/15 border-emerald-500/50 shadow-[0_0_16px_rgba(16,185,129,0.2)]'
+                      : 'bg-background-dark border-border-subtle hover:border-emerald-500/40 hover:bg-emerald-500/5'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm">{medal}</span>
+                    <span className="text-xs font-bold text-emerald-300 font-mono bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                      +{(best.ev * 100).toFixed(1)}% EV
+                    </span>
+                  </div>
+
+                  <p className="text-xs font-bold text-white truncate leading-tight">
+                    {game.home_team} <span className="text-slate-500 font-normal">v</span> {game.away_team}
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate mb-2">{game.country} — {game.league}</p>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-slate-500 font-mono">{game.match_time}</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      {best.short}
+                    </span>
+                    <span className="text-[9px] font-mono font-bold text-white">
+                      @{odd.toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {(best.prob * 100).toFixed(0)}% prob
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                    <span>xG</span>
+                    <span className="text-slate-400">{best.xg_home.toFixed(2)}</span>
+                    <span>—</span>
+                    <span className="text-slate-400">{best.xg_away.toFixed(2)}</span>
+                  </div>
+
+                  <div className={`mt-2 text-[9px] font-medium transition-colors ${
+                    isActive ? 'text-emerald-400' : 'text-slate-600 group-hover:text-emerald-400'
                   }`}>
                     {isActive ? '→ localizado na lista' : 'clique para localizar'}
                   </div>
