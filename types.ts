@@ -22,6 +22,8 @@ export interface GameRecord {
   odd_over05_ht: number;
   odd_btts_yes: number;
   odd_btts_no: number;
+  odd_1x: number;
+  odd_x2: number;
 
   // Stats
   efficiency_home: number;

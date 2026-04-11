@@ -103,7 +103,7 @@ app.post('/api/games/upsert', async (req, res) => {
         odd_home, odd_away, odd_draw,
         odd_over05, odd_over15, odd_over25,
         odd_under15, odd_under25, odd_under35, odd_under45,
-        odd_over05_ht, odd_btts_yes, odd_btts_no,
+        odd_over05_ht, odd_btts_yes, odd_btts_no, odd_1x, odd_x2,
         efficiency_home, efficiency_away,
         rank_home, rank_away,
         wins_percent_home, wins_percent_away,
@@ -119,7 +119,7 @@ app.post('/api/games/upsert', async (req, res) => {
         ?, ?, ?,
         ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?,
         ?, ?,
         ?, ?,
@@ -151,6 +151,8 @@ app.post('/api/games/upsert', async (req, res) => {
         odd_over05_ht = VALUES(odd_over05_ht),
         odd_btts_yes = VALUES(odd_btts_yes),
         odd_btts_no = VALUES(odd_btts_no),
+        odd_1x = VALUES(odd_1x),
+        odd_x2 = VALUES(odd_x2),
         efficiency_home = VALUES(efficiency_home),
         efficiency_away = VALUES(efficiency_away),
         rank_home = VALUES(rank_home),
@@ -174,7 +176,7 @@ app.post('/api/games/upsert', async (req, res) => {
       g.odd_home, g.odd_away, g.odd_draw,
       g.odd_over05, g.odd_over15, g.odd_over25,
       g.odd_under15, g.odd_under25, g.odd_under35, g.odd_under45,
-      g.odd_over05_ht, g.odd_btts_yes, g.odd_btts_no,
+      g.odd_over05_ht, g.odd_btts_yes, g.odd_btts_no, g.odd_1x, g.odd_x2,
       g.efficiency_home, g.efficiency_away,
       g.rank_home, g.rank_away,
       g.wins_percent_home, g.wins_percent_away,
@@ -227,14 +229,20 @@ app.put('/api/games/:id/result', async (req, res) => {
       const marketResult = (market) => {
         switch (market) {
           case 'home':     return hs > as_;
+          case 'draw':     return hs === as_;
           case 'away':     return as_ > hs;
           case 'over05ht': return (hsHT + asHT) > 0;
+          case 'over05':   return (hs + as_) > 0;
           case 'over15':   return (hs + as_) > 1;
           case 'over25':   return (hs + as_) > 2;
+          case 'under15':  return (hs + as_) < 2;
+          case 'under25':  return (hs + as_) < 3;
           case 'under35':  return (hs + as_) < 4;
           case 'under45':  return (hs + as_) < 5;
           case 'btts':     return hs > 0 && as_ > 0;
           case 'btts_no':  return hs === 0 || as_ === 0;
+          case 'dc_1x':    return hs >= as_;
+          case 'dc_x2':    return as_ >= hs;
           default:         return null;
         }
       };

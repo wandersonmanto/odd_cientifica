@@ -50,6 +50,8 @@ async function init() {
       odd_over05_ht FLOAT,
       odd_btts_yes FLOAT,
       odd_btts_no FLOAT,
+      odd_1x FLOAT,
+      odd_x2 FLOAT,
       efficiency_home FLOAT,
       efficiency_away FLOAT,
       rank_home FLOAT,

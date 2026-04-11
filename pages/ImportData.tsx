@@ -222,6 +222,8 @@ const ImportData: React.FC = () => {
         odd_over05_ht: cleanFloat(getVal('odds_10')),
         odd_btts_yes: cleanFloat(getVal('odds_11')),
         odd_btts_no: cleanFloat(getVal('odds_12')),
+        odd_1x: cleanFloat(getVal('odds_13') || getVal('1x')),
+        odd_x2: cleanFloat(getVal('odds_14') || getVal('x2')),
         efficiency_home: eff_h, efficiency_away: eff_a,
         rank_home: rank_h, rank_away: rank_a,
         wins_percent_home: win_h, wins_percent_away: win_a,

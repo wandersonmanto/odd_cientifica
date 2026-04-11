@@ -26,6 +26,8 @@ export function runMigrations(db: Database): void {
       odd_over05_ht REAL DEFAULT 0,
       odd_btts_yes REAL DEFAULT 0,
       odd_btts_no REAL DEFAULT 0,
+      odd_1x REAL DEFAULT 0,
+      odd_x2 REAL DEFAULT 0,
 
       -- Stats
       efficiency_home REAL DEFAULT 0,
