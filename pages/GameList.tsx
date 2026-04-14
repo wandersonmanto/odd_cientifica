@@ -257,6 +257,9 @@ const GameList: React.FC = () => {
   // Top 5 Dupla Chance — ocultar/exibir painel
   const [showTopDoubleChance, setShowTopDoubleChance] = useState(true);
 
+  // Top 5 BTTS Científico — ocultar/exibir painel
+  const [showTopBTTS, setShowTopBTTS] = useState(true);
+
   // Top 3 do dia — navegação e highlight
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
@@ -539,22 +542,36 @@ const GameList: React.FC = () => {
     return map;
   }, [paginatedGames]);
 
-  // Top 3 do dia — melhores EVs de todos os jogos da data selecionada.
-  // Requisito: odd do mercado recomendado > 1.30 (evita odds muito baixas que
-  // não valem o risco e long-shots que inflam EV artificialmente).
+  // Top 5 do Dia — score composto (EV×0.6 + prob×0.4), odd > 1.30, máximo 2 por mercado.
+  // Score composto evita que EV inflado por prob baixa domine a lista.
+  // Limite por mercado garante diversidade de oportunidades.
   const top3 = useMemo(() => {
-    const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
+    const candidates: { game: GameRecord; best: BestMarket; odd: number; score: number }[] = [];
     for (const game of filteredGames) {
       const best = getBestMarket(game);
       if (!best) continue;
       const oddVal = game[best.oddKey as keyof GameRecord] as number;
       if (!oddVal || oddVal <= 1.30) continue;
-      candidates.push({ game, best, odd: oddVal });
+      const score = best.ev * 0.6 + best.prob * 0.4;
+      candidates.push({ game, best, odd: oddVal, score });
     }
-    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
+    candidates.sort((a, b) => b.score - a.score);
+    // Seleciona top 5 com no máximo 2 jogos do mesmo mercado
+    const marketCount: Record<string, number> = {};
+    const result: typeof candidates = [];
+    for (const c of candidates) {
+      const mkt = c.best.market;
+      if ((marketCount[mkt] ?? 0) >= 2) continue;
+      marketCount[mkt] = (marketCount[mkt] ?? 0) + 1;
+      result.push(c);
+      if (result.length === 5) break;
+    }
+    return result;
   }, [filteredGames]);
 
-  // Top 5 odds baixas — mercado recomendado entre 1.25 e 1.34 (alta confiança)
+  // Top 5 Alta Confiança — odds 1.25–1.34 COM prob Poisson ≥ 70%.
+  // Exige prob alta porque o nome promete "alta confiança": odd baixa + prob baixa = aposta perdedora.
+  // Ordenado por probabilidade (não EV), pois o critério principal é certeza do modelo.
   const topLowOdds = useMemo(() => {
     const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
     for (const game of filteredGames) {
@@ -562,100 +579,171 @@ const GameList: React.FC = () => {
       if (!best) continue;
       const oddVal = game[best.oddKey as keyof GameRecord] as number;
       if (!oddVal || oddVal < 1.25 || oddVal > 1.34) continue;
+      if (best.prob < 0.70) continue; // exige confiança real do modelo ≥ 70%
       candidates.push({ game, best, odd: oddVal });
     }
-    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
+    return candidates.sort((a, b) => b.best.prob - a.best.prob).slice(0, 5);
   }, [filteredGames]);
 
-  // Top 5 Favorito Dominante — jogos selecionados com o filtro de Favorito Dominante
+  // Top 5 Favorito Dominante — threshold elevado para 60% (antes 50%) e filtro de odd do favorito.
+  // Exige também validação Poisson (prob ≥ 55%) para alinhar critério empírico com o modelo.
+  // Odd do favorito entre 1.30–2.20 garante que só aparecem jogos com valor possível.
   const topDominant = useMemo(() => {
     const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
     for (const game of filteredGames) {
       const { homeWin, awayWin } = calcWinProbs(game);
       const oneSideLow  = homeWin <= 15 || awayWin <= 15;
-      const favoriteDom = Math.max(homeWin, awayWin) > 50;
+      const favoriteDom = Math.max(homeWin, awayWin) > 60; // elevado de 50% → 60%
       const homeIsFav = homeWin >= awayWin;
       const oddOk = homeIsFav
         ? (game.odd_home > 0 && game.odd_away > 0 && game.odd_home < game.odd_away)
         : (game.odd_home > 0 && game.odd_away > 0 && game.odd_away < game.odd_home);
-        
+
       if (!(oneSideLow && favoriteDom && oddOk)) continue;
-      
+
+      // Filtro de odd do favorito: valor prático entre 1.30 e 2.20
+      const favOdd = homeIsFav ? game.odd_home : game.odd_away;
+      if (!favOdd || favOdd < 1.30 || favOdd > 2.20) continue;
+
       const best = getBestMarket(game);
       if (!best) continue;
+
+      // Validação cruzada com Poisson: prob do favorito via modelo deve ser ≥ 55%
+      const result = computeGameProbabilities(game);
+      if (result) {
+        const poissonFavProb = homeIsFav ? result.probs.home : result.probs.away;
+        if (poissonFavProb < 0.55) continue;
+      }
+
       const oddVal = game[best.oddKey as keyof GameRecord] as number;
       candidates.push({ game, best, odd: oddVal });
     }
     return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
   }, [filteredGames]);
 
-  // Top 5 Under 2.5 — maior probabilidade de under 2.5 gols
+  // Top 5 Under 2.5 — EV positivo obrigatório, liga de baixa pontuação preferida.
+  // Ordenado por EV (não prob pura) para garantir valor e não apenas certeza do modelo.
+  // Filtro global_goals_league < 2.6 remove ligas de alto volume de gols onde under 2.5 é improvável.
   const topUnder25 = useMemo(() => {
     const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
     for (const game of filteredGames) {
       const oddVal = game.odd_under25 as number;
       if (!oddVal || oddVal <= 0) continue;
-      
+
+      // Preferir ligas com média de gols baixa (mais propícias a under 2.5)
+      const leagueAvg = game.global_goals_league || game.global_goals_match || 0;
+      if (leagueAvg > 2.6 && leagueAvg !== 0) continue;
+
       const result = computeGameProbabilities(game);
       if (!result) continue;
-      
+
       const prob = result.probs.under25;
-      
+      const ev = prob * oddVal - 1;
+
+      // Exige EV positivo — descarta jogos onde odd não compensa a probabilidade
+      if (ev <= 0) continue;
+
       const customBest: BestMarket = {
         market: 'under25',
         oddKey: 'odd_under25',
         short: 'Un 2.5',
-        ev: prob * oddVal - 1,
-        prob: prob,
+        ev,
+        prob,
         xg_home: result.xgHome,
         xg_away: result.xgAway
       };
-      
+
       candidates.push({ game, best: customBest, odd: oddVal });
     }
-    return candidates.sort((a, b) => b.best.prob - a.best.prob).slice(0, 5);
+    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
   }, [filteredGames]);
 
-  // Top 5 Dupla Chance (1X e X2)
+  // Top 5 Dupla Chance (1X e X2) — prob ≥ 70%, odd ≥ 1.15, EV positivo, ordenado por EV.
+  // Removida regra estrita "ambas devem existir" — basta uma opção válida por jogo.
+  // Filtro de odd mínima (1.15) garante que haja valor real possível após margem do bookie.
   const topDoubleChance = useMemo(() => {
     const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
     for (const game of filteredGames) {
       const odd1x = game.odd_1x as number;
       const oddx2 = game.odd_x2 as number;
-      
+
       const result = computeGameProbabilities(game);
       if (!result) continue;
 
-      // REGRA ESTRITA: Ambas as odds precisam ser maiores que zero no mesmo jogo
-      if (!odd1x || odd1x <= 0 || !oddx2 || oddx2 <= 0) continue;
+      // Adiciona 1X se odd válida ≥ 1.15 + prob ≥ 70% + EV positivo
+      if (odd1x && odd1x >= 1.15) {
+        const prob1x = result.probs.dc_1x;
+        const ev1x = prob1x * odd1x - 1;
+        if (prob1x >= 0.70 && ev1x > 0) {
+          candidates.push({
+            game, odd: odd1x,
+            best: { market: 'dc_1x', oddKey: 'odd_1x', short: '1X', ev: ev1x, prob: prob1x, xg_home: result.xgHome, xg_away: result.xgAway }
+          });
+        }
+      }
 
-      // Adiciona 1X como candidato
-      candidates.push({
-        game,
-        odd: odd1x,
-        best: { market: 'dc_1x', oddKey: 'odd_1x', short: '1X', ev: result.probs.dc_1x * odd1x - 1, prob: result.probs.dc_1x, xg_home: result.xgHome, xg_away: result.xgAway }
-      });
-
-      // Adiciona X2 como candidato
-      candidates.push({
-        game,
-        odd: oddx2,
-        best: { market: 'dc_x2', oddKey: 'odd_x2', short: 'X2', ev: result.probs.dc_x2 * oddx2 - 1, prob: result.probs.dc_x2, xg_home: result.xgHome, xg_away: result.xgAway }
-      });
+      // Adiciona X2 se odd válida ≥ 1.15 + prob ≥ 70% + EV positivo
+      if (oddx2 && oddx2 >= 1.15) {
+        const probx2 = result.probs.dc_x2;
+        const evx2 = probx2 * oddx2 - 1;
+        if (probx2 >= 0.70 && evx2 > 0) {
+          candidates.push({
+            game, odd: oddx2,
+            best: { market: 'dc_x2', oddKey: 'odd_x2', short: 'X2', ev: evx2, prob: probx2, xg_home: result.xgHome, xg_away: result.xgAway }
+          });
+        }
+      }
     }
-    
-    // Agrupa pelo jogo pegando a melhor opção de Dupla Chance
+
+    // Agrupa pelo jogo pegando a melhor opção de Dupla Chance (maior EV)
     const bestPerGame = new Map<string, typeof candidates[0]>();
     for (const c of candidates) {
       const existing = bestPerGame.get(c.game.id);
-      if (!existing || c.best.prob > existing.best.prob) {
+      if (!existing || c.best.ev > existing.best.ev) {
         bestPerGame.set(c.game.id, c);
       }
     }
-    
+
     return Array.from(bestPerGame.values())
-      .sort((a, b) => b.best.prob - a.best.prob)
+      .sort((a, b) => b.best.ev - a.best.ev)
       .slice(0, 5);
+  }, [filteredGames]);
+
+  // Top 5 BTTS Científico — ambos os times com perfil ofensivo confirmado pelo banco de dados.
+  // Critérios estatísticos: médias de gols ≥ limiar + prob Poisson BTTS ≥ 55% + EV ≥ 2%.
+  // Odd mínima 1.55 garante que há espaço para valor mesmo após margem do bookie.
+  // BTTS é menos eficiente que match odds, tornando este mercado propício a edges reais.
+  const topBTTS = useMemo(() => {
+    const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
+    for (const game of filteredGames) {
+      const oddVal = game.odd_btts_yes as number;
+      if (!oddVal || oddVal < 1.55) continue;
+
+      // Exige perfil ofensivo e defensivo aberto nos dois lados
+      const agsH = game.avg_goals_scored_home ?? 0;
+      const agsA = game.avg_goals_scored_away ?? 0;
+      const agcH = game.avg_goals_conceded_home ?? 0;
+      const agcA = game.avg_goals_conceded_away ?? 0;
+      if (agsH < 1.2 || agsA < 1.0 || agcH < 0.8 || agcA < 0.8) continue;
+
+      const result = computeGameProbabilities(game);
+      if (!result) continue;
+
+      const prob = result.probs.btts;
+      if (prob < 0.55) continue;
+
+      const ev = prob * oddVal - 1;
+      if (ev < 0.02) continue; // exige mínimo +2% de edge
+
+      candidates.push({
+        game, odd: oddVal,
+        best: {
+          market: 'btts', oddKey: 'odd_btts_yes', short: 'BTTS',
+          ev, prob, xg_home: result.xgHome, xg_away: result.xgAway
+        }
+      });
+    }
+    return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
   }, [filteredGames]);
 
   // Navega para a linha do jogo na tabela (troca de página se necessário + scroll)
@@ -967,7 +1055,7 @@ const GameList: React.FC = () => {
         <div className="bg-surface border border-emerald-500/20 rounded-xl shadow-xl overflow-hidden">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-emerald-500/10">
             <span className="text-sm font-bold text-white">Top {topLowOdds.length} Alta Confiança</span>
-            <span className="text-[10px] text-slate-500">— odds 1.25–1.34 · maior EV por modelo Poisson</span>
+            <span className="text-[10px] text-slate-500">— odds 1.25–1.34 · prob ≥ 70% · maior prob por modelo Poisson</span>
             <button
               onClick={() => setShowTopLowOdds(v => !v)}
               className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
@@ -1043,7 +1131,7 @@ const GameList: React.FC = () => {
         <div className="bg-surface border border-orange-500/20 rounded-xl shadow-xl overflow-hidden mb-6">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-orange-500/10">
             <span className="text-sm font-bold text-white">Top {topDominant.length} Favorito Dominante</span>
-            <span className="text-[10px] text-slate-500">— Win% ≤ 15% · favorito {'>'} 50%</span>
+            <span className="text-[10px] text-slate-500">— Win% ≤ 15% · favorito {'>'} 60% · odd 1.30–2.20</span>
             <button
               onClick={() => setShowTopDominant(v => !v)}
               className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
@@ -1119,7 +1207,7 @@ const GameList: React.FC = () => {
         <div className="bg-surface border border-pink-500/20 rounded-xl shadow-xl overflow-hidden mb-6">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-pink-500/10">
             <span className="text-sm font-bold text-white">Top {topUnder25.length} Under 2.5</span>
-            <span className="text-[10px] text-slate-500">— maiores probabilidades de menos de 3 gols</span>
+            <span className="text-[10px] text-slate-500">— maior EV · prob Poisson · ligas de baixa pontuação</span>
             <button
               onClick={() => setShowTopUnder25(v => !v)}
               className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
@@ -1195,7 +1283,7 @@ const GameList: React.FC = () => {
         <div className="bg-surface border border-indigo-500/20 rounded-xl shadow-xl overflow-hidden mb-6">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-indigo-500/10">
             <span className="text-sm font-bold text-white">Top {topDoubleChance.length} Dupla Chance</span>
-            <span className="text-[10px] text-slate-500">— maiores probabilidades para 1X e X2 (odds {'>'} 0)</span>
+            <span className="text-[10px] text-slate-500">— maior EV · prob ≥ 70% · odd ≥ 1.15 · 1X e X2</span>
             <button
               onClick={() => setShowTopDoubleChance(v => !v)}
               className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
@@ -1254,6 +1342,94 @@ const GameList: React.FC = () => {
 
                   <div className={`mt-2 text-[9px] font-medium transition-colors ${
                     isActive ? 'text-indigo-400' : 'text-slate-600 group-hover:text-indigo-400'
+                  }`}>
+                    {isActive ? '→ localizado na lista' : 'clique para localizar'}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── Top 5 BTTS Científico ─────────────────────────────────────── */}
+      {topBTTS.length > 0 && (
+        <div className="bg-surface border border-teal-500/20 rounded-xl shadow-xl overflow-hidden mb-6">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-500/10">
+            <span className="text-sm font-bold text-white">Top {topBTTS.length} BTTS Científico</span>
+            <span className="text-[10px] text-slate-500">— ambas marcam · EV ≥ 2% · perfil ofensivo confirmado</span>
+            <button
+              onClick={() => setShowTopBTTS(v => !v)}
+              className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+            >
+              {showTopBTTS ? 'Ocultar ▲' : 'Exibir ▼'}
+            </button>
+          </div>
+
+          {showTopBTTS && (
+          <div className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {topBTTS.map(({ game, best, odd }, i: number) => {
+              const isActive = highlightedGameId === game.id;
+              const medal = ['🥇', '🥈', '🥉', '4°', '5°'][i];
+              return (
+                <button
+                  key={game.id}
+                  onClick={() => navigateToGame(game.id)}
+                  className={`text-left p-3 rounded-xl border transition-all group ${
+                    isActive
+                      ? 'bg-teal-500/15 border-teal-500/50 shadow-[0_0_16px_rgba(20,184,166,0.2)]'
+                      : 'bg-background-dark border-border-subtle hover:border-teal-500/40 hover:bg-teal-500/5'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm">{medal}</span>
+                    <span className="text-xs font-bold text-teal-300 font-mono bg-teal-500/10 px-2 py-0.5 rounded-full">
+                      +{(best.ev * 100).toFixed(1)}% EV
+                    </span>
+                  </div>
+
+                  <p className="text-xs font-bold text-white truncate leading-tight">
+                    {game.home_team} <span className="text-slate-500 font-normal">v</span> {game.away_team}
+                  </p>
+                  <p className="text-[10px] text-slate-500 truncate mb-2">{game.country} — {game.league}</p>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-slate-500 font-mono">{game.match_time}</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">
+                      {best.short}
+                    </span>
+                    <span className="text-[9px] font-mono font-bold text-white">
+                      @{odd.toFixed(2)}
+                    </span>
+                    <span className="text-[9px] text-slate-400">
+                      {(best.prob * 100).toFixed(0)}% prob
+                    </span>
+                  </div>
+
+                  <div className="mt-2 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                    <span>xG</span>
+                    <span className="text-slate-400">{best.xg_home.toFixed(2)}</span>
+                    <span>—</span>
+                    <span className="text-slate-400">{best.xg_away.toFixed(2)}</span>
+                  </div>
+
+                  {/* Médias de gols do jogo */}
+                  <div className="mt-1 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                    <span>avg</span>
+                    <span className="text-teal-500/70">{(game.avg_goals_scored_home ?? 0).toFixed(1)}sc</span>
+                    <span>/</span>
+                    <span className="text-rose-500/70">{(game.avg_goals_conceded_home ?? 0).toFixed(1)}cc</span>
+                    <span className="text-slate-700">|</span>
+                    <span className="text-teal-500/70">{(game.avg_goals_scored_away ?? 0).toFixed(1)}sc</span>
+                    <span>/</span>
+                    <span className="text-rose-500/70">{(game.avg_goals_conceded_away ?? 0).toFixed(1)}cc</span>
+                  </div>
+
+                  <div className={`mt-2 text-[9px] font-medium transition-colors ${
+                    isActive ? 'text-teal-400' : 'text-slate-600 group-hover:text-teal-400'
                   }`}>
                     {isActive ? '→ localizado na lista' : 'clique para localizar'}
                   </div>
