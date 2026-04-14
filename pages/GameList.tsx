@@ -710,14 +710,15 @@ const GameList: React.FC = () => {
   }, [filteredGames]);
 
   // Top 5 BTTS Científico — ambos os times com perfil ofensivo confirmado pelo banco de dados.
-  // Critérios estatísticos: médias de gols ≥ limiar + prob Poisson BTTS ≥ 55% + EV ≥ 2%.
-  // Odd mínima 1.55 garante que há espaço para valor mesmo após margem do bookie.
+  // Critérios: médias de gols ≥ limiar + prob Poisson BTTS ≥ 55% + EV positivo.
+  // Nota: não há floor de odd — o cálculo de EV (prob × odd > 1) já garante valor natural.
+  // Impor odd mínima junto com prob mínima cria contradição matemática (EV sempre negativo).
   // BTTS é menos eficiente que match odds, tornando este mercado propício a edges reais.
   const topBTTS = useMemo(() => {
     const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
     for (const game of filteredGames) {
       const oddVal = game.odd_btts_yes as number;
-      if (!oddVal || oddVal < 1.55) continue;
+      if (!oddVal || oddVal <= 0) continue;
 
       // Exige perfil ofensivo e defensivo aberto nos dois lados
       const agsH = game.avg_goals_scored_home ?? 0;
@@ -733,7 +734,7 @@ const GameList: React.FC = () => {
       if (prob < 0.55) continue;
 
       const ev = prob * oddVal - 1;
-      if (ev < 0.02) continue; // exige mínimo +2% de edge
+      if (ev <= 0) continue; // EV natural positivo: prob × odd > 1
 
       candidates.push({
         game, odd: oddVal,
@@ -1359,7 +1360,7 @@ const GameList: React.FC = () => {
         <div className="bg-surface border border-teal-500/20 rounded-xl shadow-xl overflow-hidden mb-6">
           <div className="flex items-center gap-2 px-4 py-3 border-b border-teal-500/10">
             <span className="text-sm font-bold text-white">Top {topBTTS.length} BTTS Científico</span>
-            <span className="text-[10px] text-slate-500">— ambas marcam · EV ≥ 2% · perfil ofensivo confirmado</span>
+            <span className="text-[10px] text-slate-500">— ambas marcam · EV positivo · perfil ofensivo confirmado</span>
             <button
               onClick={() => setShowTopBTTS(v => !v)}
               className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
