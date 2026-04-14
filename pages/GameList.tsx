@@ -260,6 +260,9 @@ const GameList: React.FC = () => {
   // Top 5 BTTS Científico — ocultar/exibir painel
   const [showTopBTTS, setShowTopBTTS] = useState(true);
 
+  // Seleção Científica do Dia — ocultar/exibir painel
+  const [showSelecao, setShowSelecao] = useState(true);
+
   // Top 3 do dia — navegação e highlight
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
@@ -747,6 +750,124 @@ const GameList: React.FC = () => {
     return candidates.sort((a, b) => b.best.ev - a.best.ev).slice(0, 5);
   }, [filteredGames]);
 
+  // ─── Seleção Científica do Dia ────────────────────────────────────────────────
+  // Coleta candidatos de todas as 6 categorias, desuplica por jogo e aplica
+  // bônus de confirmação: jogo validado por múltiplas categorias recebe score maior.
+  // Score unificado = EV×0.6 + prob×0.4 + (n_categorias - 1) × 0.05
+  const selecaoCientifica = useMemo(() => {
+    type Entry = { game: GameRecord; best: BestMarket; odd: number; categories: string[]; baseScore: number };
+    const gameMap = new Map<string, Entry>();
+
+    const addCandidate = (game: GameRecord, best: BestMarket, odd: number, category: string) => {
+      const baseScore = best.ev * 0.6 + best.prob * 0.4;
+      const existing = gameMap.get(game.id);
+      if (!existing) {
+        gameMap.set(game.id, { game, best, odd, categories: [category], baseScore });
+      } else {
+        if (!existing.categories.includes(category)) existing.categories.push(category);
+        // Mantém o melhor mercado encontrado entre as categorias
+        if (baseScore > existing.baseScore) {
+          existing.best = best; existing.odd = odd; existing.baseScore = baseScore;
+        }
+      }
+    };
+
+    // Categoria 1 — Top do Dia (odd > 1.30)
+    for (const game of filteredGames) {
+      const best = getBestMarket(game);
+      if (!best) continue;
+      const oddVal = game[best.oddKey as keyof GameRecord] as number;
+      if (!oddVal || oddVal <= 1.30) continue;
+      addCandidate(game, best, oddVal, 'Dia');
+    }
+
+    // Categoria 2 — Alta Confiança (1.25–1.34, prob ≥ 70%)
+    for (const game of filteredGames) {
+      const best = getBestMarket(game);
+      if (!best) continue;
+      const oddVal = game[best.oddKey as keyof GameRecord] as number;
+      if (!oddVal || oddVal < 1.25 || oddVal > 1.34 || best.prob < 0.70) continue;
+      addCandidate(game, best, oddVal, 'Alta Conf.');
+    }
+
+    // Categoria 3 — Favorito Dominante (wins% > 60%, Poisson ≥ 55%, odd 1.30–2.20)
+    for (const game of filteredGames) {
+      const { homeWin, awayWin } = calcWinProbs(game);
+      if (!(homeWin <= 15 || awayWin <= 15) || Math.max(homeWin, awayWin) <= 60) continue;
+      const homeIsFav = homeWin >= awayWin;
+      const oddOk = homeIsFav
+        ? (game.odd_home > 0 && game.odd_away > 0 && game.odd_home < game.odd_away)
+        : (game.odd_home > 0 && game.odd_away > 0 && game.odd_away < game.odd_home);
+      if (!oddOk) continue;
+      const favOdd = homeIsFav ? game.odd_home : game.odd_away;
+      if (!favOdd || favOdd < 1.30 || favOdd > 2.20) continue;
+      const best = getBestMarket(game);
+      if (!best) continue;
+      const result = computeGameProbabilities(game);
+      if (result) {
+        const poissonFavProb = homeIsFav ? result.probs.home : result.probs.away;
+        if (poissonFavProb < 0.55) continue;
+      }
+      const oddVal = game[best.oddKey as keyof GameRecord] as number;
+      addCandidate(game, best, oddVal, 'Fav. Dom.');
+    }
+
+    // Categoria 4 — Under 2.5 (EV > 0, liga baixa pontuação)
+    for (const game of filteredGames) {
+      const oddVal = game.odd_under25 as number;
+      if (!oddVal || oddVal <= 0) continue;
+      const leagueAvg = game.global_goals_league || game.global_goals_match || 0;
+      if (leagueAvg > 2.6 && leagueAvg !== 0) continue;
+      const result = computeGameProbabilities(game);
+      if (!result) continue;
+      const prob = result.probs.under25;
+      const ev = prob * oddVal - 1;
+      if (ev <= 0) continue;
+      addCandidate(game, { market: 'under25', oddKey: 'odd_under25', short: 'Un 2.5', ev, prob, xg_home: result.xgHome, xg_away: result.xgAway }, oddVal, 'Under 2.5');
+    }
+
+    // Categoria 5 — Dupla Chance (odd ≥ 1.15, prob ≥ 70%, EV > 0)
+    for (const game of filteredGames) {
+      const result = computeGameProbabilities(game);
+      if (!result) continue;
+      const odd1x = game.odd_1x as number;
+      const oddx2 = game.odd_x2 as number;
+      let bestDC: { best: BestMarket; odd: number } | null = null;
+      if (odd1x && odd1x >= 1.15) {
+        const p = result.probs.dc_1x; const ev = p * odd1x - 1;
+        if (p >= 0.70 && ev > 0 && (!bestDC || ev > bestDC.best.ev))
+          bestDC = { best: { market: 'dc_1x', oddKey: 'odd_1x', short: '1X', ev, prob: p, xg_home: result.xgHome, xg_away: result.xgAway }, odd: odd1x };
+      }
+      if (oddx2 && oddx2 >= 1.15) {
+        const p = result.probs.dc_x2; const ev = p * oddx2 - 1;
+        if (p >= 0.70 && ev > 0 && (!bestDC || ev > bestDC.best.ev))
+          bestDC = { best: { market: 'dc_x2', oddKey: 'odd_x2', short: 'X2', ev, prob: p, xg_home: result.xgHome, xg_away: result.xgAway }, odd: oddx2 };
+      }
+      if (bestDC) addCandidate(game, bestDC.best, bestDC.odd, 'Dupla Ch.');
+    }
+
+    // Categoria 6 — BTTS (perfil ofensivo + prob ≥ 55% + EV > 0)
+    for (const game of filteredGames) {
+      const oddVal = game.odd_btts_yes as number;
+      if (!oddVal || oddVal <= 0) continue;
+      if ((game.avg_goals_scored_home ?? 0) < 1.2 || (game.avg_goals_scored_away ?? 0) < 1.0) continue;
+      if ((game.avg_goals_conceded_home ?? 0) < 0.8 || (game.avg_goals_conceded_away ?? 0) < 0.8) continue;
+      const result = computeGameProbabilities(game);
+      if (!result) continue;
+      const prob = result.probs.btts;
+      if (prob < 0.55) continue;
+      const ev = prob * oddVal - 1;
+      if (ev <= 0) continue;
+      addCandidate(game, { market: 'btts', oddKey: 'odd_btts_yes', short: 'BTTS', ev, prob, xg_home: result.xgHome, xg_away: result.xgAway }, oddVal, 'BTTS');
+    }
+
+    // Score final com bônus de confirmação por categoria extra
+    return Array.from(gameMap.values())
+      .map(e => ({ ...e, finalScore: e.baseScore + (e.categories.length - 1) * 0.05 }))
+      .sort((a, b) => b.finalScore - a.finalScore)
+      .slice(0, 6);
+  }, [filteredGames]);
+
   // Navega para a linha do jogo na tabela (troca de página se necessário + scroll)
   const navigateToGame = (gameId: string) => {
     const idx = processedGames.findIndex(g => g.id === gameId);
@@ -967,6 +1088,116 @@ const GameList: React.FC = () => {
             </div>
         </div>
       </div>
+
+      {/* ─── Seleção Científica do Dia ─────────────────────────────────────────── */}
+      {selecaoCientifica.length > 0 && (
+        <div className="bg-surface border border-amber-400/30 rounded-xl shadow-xl overflow-hidden">
+          {/* Borda superior dourada */}
+          <div className="h-0.5 bg-gradient-to-r from-amber-400/0 via-amber-400/80 to-amber-400/0" />
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-amber-400/10">
+            <span className="text-sm font-bold text-amber-300">⚡ Seleção Científica do Dia</span>
+            <span className="text-[10px] text-slate-500">
+              — {selecaoCientifica.length} melhores jogos únicos · score unificado · bônus por multi-categoria
+            </span>
+            <button
+              onClick={() => setShowSelecao(v => !v)}
+              className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+            >
+              {showSelecao ? 'Ocultar ▲' : 'Exibir ▼'}
+            </button>
+          </div>
+
+          {showSelecao && (
+            <div className="p-4">
+              <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+                {selecaoCientifica.map(({ game, best, odd, categories, finalScore }, i) => {
+                  const isActive = highlightedGameId === game.id;
+                  const medals = ['🥇', '🥈', '🥉', '4°', '5°', '6°'];
+                  const isMulti = categories.length > 1;
+                  // Cores por posição
+                  const colors = [
+                    { ring: 'ring-amber-400/60', bg: 'bg-amber-400/10', text: 'text-amber-300', hover: 'hover:border-amber-400/50 hover:bg-amber-400/5', active: 'bg-amber-400/15 border-amber-400/60 shadow-[0_0_20px_rgba(251,191,36,0.2)]' },
+                    { ring: 'ring-amber-300/40', bg: 'bg-amber-300/8',  text: 'text-amber-200', hover: 'hover:border-amber-300/40 hover:bg-amber-300/5', active: 'bg-amber-300/10 border-amber-300/50' },
+                    { ring: 'ring-slate-400/30',  bg: 'bg-slate-400/8',  text: 'text-slate-300', hover: 'hover:border-slate-400/30 hover:bg-slate-400/5', active: 'bg-slate-400/10 border-slate-400/40' },
+                    { ring: 'ring-slate-500/20',  bg: 'bg-slate-500/5',  text: 'text-slate-400', hover: 'hover:border-slate-500/20 hover:bg-slate-500/5', active: 'bg-slate-500/10 border-slate-500/30' },
+                    { ring: 'ring-slate-500/20',  bg: 'bg-slate-500/5',  text: 'text-slate-400', hover: 'hover:border-slate-500/20 hover:bg-slate-500/5', active: 'bg-slate-500/10 border-slate-500/30' },
+                    { ring: 'ring-slate-500/20',  bg: 'bg-slate-500/5',  text: 'text-slate-400', hover: 'hover:border-slate-500/20 hover:bg-slate-500/5', active: 'bg-slate-500/10 border-slate-500/30' },
+                  ];
+                  const c = colors[i] ?? colors[5];
+                  return (
+                    <button
+                      key={game.id}
+                      onClick={() => navigateToGame(game.id)}
+                      className={`text-left p-3 rounded-xl border transition-all group ${
+                        isActive ? c.active : `bg-background-dark border-border-subtle ${c.hover}`
+                      }`}
+                    >
+                      {/* Header: posição + score */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-sm">{medals[i]}</span>
+                        <span className={`text-[10px] font-bold font-mono ${c.bg} ${c.text} px-1.5 py-0.5 rounded-full`}>
+                          +{(best.ev * 100).toFixed(1)}% EV
+                        </span>
+                      </div>
+
+                      {/* Badges de categoria */}
+                      <div className="flex flex-wrap gap-1 mb-1.5">
+                        {categories.map(cat => (
+                          <span
+                            key={cat}
+                            className={`text-[8px] font-bold px-1 py-0.5 rounded ${
+                              isMulti
+                                ? 'bg-amber-400/15 text-amber-300 border border-amber-400/30'
+                                : 'bg-white/5 text-slate-500 border border-white/10'
+                            }`}
+                          >
+                            {cat}
+                          </span>
+                        ))}
+                        {isMulti && (
+                          <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-amber-400/20 text-amber-400 border border-amber-400/40">
+                            ×{categories.length}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Times */}
+                      <p className="text-xs font-bold text-white truncate leading-tight">
+                        {game.home_team} <span className="text-slate-500 font-normal">v</span> {game.away_team}
+                      </p>
+                      <p className="text-[10px] text-slate-500 truncate mb-1.5">{game.country} — {game.league}</p>
+
+                      {/* Mercado + odd + prob */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] text-slate-500 font-mono">{game.match_time}</span>
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${c.bg} ${c.text} border ${c.ring}`}>
+                          {best.short}
+                        </span>
+                        <span className="text-[9px] font-mono font-bold text-white">@{odd.toFixed(2)}</span>
+                        <span className="text-[9px] text-slate-400">{(best.prob * 100).toFixed(0)}%</span>
+                      </div>
+
+                      {/* xG */}
+                      <div className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                        <span>xG</span>
+                        <span className="text-slate-400">{best.xg_home.toFixed(2)}</span>
+                        <span>—</span>
+                        <span className="text-slate-400">{best.xg_away.toFixed(2)}</span>
+                      </div>
+
+                      <div className={`mt-1.5 text-[9px] font-medium transition-colors ${
+                        isActive ? c.text : `text-slate-600 group-hover:${c.text}`
+                      }`}>
+                        {isActive ? '→ localizado na lista' : 'clique para localizar'}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── Top 5 do Dia ──────────────────────────────────────────────────────── */}
       {top3.length > 0 && (
