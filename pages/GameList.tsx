@@ -263,6 +263,9 @@ const GameList: React.FC = () => {
   // Seleção Científica do Dia — ocultar/exibir painel
   const [showSelecao, setShowSelecao] = useState(true);
 
+  // Top 3 Juros Compostos — ocultar/exibir painel
+  const [showJurosCompostos, setShowJurosCompostos] = useState(true);
+
   // Top 3 do dia — navegação e highlight
   const [highlightedGameId, setHighlightedGameId] = useState<string | null>(null);
 
@@ -868,6 +871,46 @@ const GameList: React.FC = () => {
       .slice(0, 6);
   }, [filteredGames]);
 
+  // ─── Top 3 Juros Compostos ────────────────────────────────────────────────────
+  // Seleciona os 3 jogos com MAIOR probabilidade Poisson cuja odd (qualquer mercado)
+  // esteja entre 1.30 e 1.36, acima do breakeven mínimo (~72%).
+  // Ordenado por probabilidade decrescente: máxima certeza primeiro.
+  // A simulação de retorno usa as odds reais de cada jogo selecionado.
+  const topJurosCompostos = useMemo(() => {
+    const candidates: { game: GameRecord; best: BestMarket; odd: number }[] = [];
+
+    for (const game of filteredGames) {
+      const result = computeGameProbabilities(game);
+      if (!result) continue;
+
+      let bestInRange: BestMarket | null = null;
+      let bestOdd = 0;
+
+      // Verifica TODOS os mercados — não apenas o de maior EV
+      for (const market of MARKET_OPTIONS) {
+        const odd = game[market.oddKey as keyof GameRecord] as number;
+        if (!odd || odd < 1.30 || odd > 1.36) continue;
+
+        const prob = result.probs[market.value as keyof GameProbabilities] ?? 0;
+        // Breakeven para odd 1.30 = 76.9%; exigimos ≥ 72% como piso mínimo
+        if (prob < 0.72) continue;
+
+        // Entre opções no range, seleciona a de maior probabilidade
+        if (!bestInRange || prob > bestInRange.prob) {
+          bestInRange = {
+            market: market.value, oddKey: market.oddKey, short: market.short,
+            ev: prob * odd - 1, prob, xg_home: result.xgHome, xg_away: result.xgAway,
+          };
+          bestOdd = odd;
+        }
+      }
+
+      if (bestInRange) candidates.push({ game, best: bestInRange, odd: bestOdd });
+    }
+
+    return candidates.sort((a, b) => b.best.prob - a.best.prob).slice(0, 3);
+  }, [filteredGames]);
+
   // Navega para a linha do jogo na tabela (troca de página se necessário + scroll)
   const navigateToGame = (gameId: string) => {
     const idx = processedGames.findIndex(g => g.id === gameId);
@@ -1198,6 +1241,149 @@ const GameList: React.FC = () => {
           )}
         </div>
       )}
+
+      {/* ─── Top 3 Juros Compostos ─────────────────────────────────────────────── */}
+      {topJurosCompostos.length > 0 && (() => {
+        // Simulação de retorno composto usando as odds reais de cada jogo
+        const STAKE_INICIAL = 100;
+        const etapas = topJurosCompostos.reduce<{ stake: number; retorno: number }[]>((acc, { odd }, i) => {
+          const stake = i === 0 ? STAKE_INICIAL : acc[i - 1].retorno;
+          acc.push({ stake, retorno: parseFloat((stake * odd).toFixed(2)) });
+          return acc;
+        }, []);
+        const lucroTotal = etapas.length > 0 ? etapas[etapas.length - 1].retorno - STAKE_INICIAL : 0;
+        const probCombinada = topJurosCompostos.reduce((p, { best }) => p * best.prob, 1);
+
+        return (
+          <div className="bg-surface border border-green-500/25 rounded-xl shadow-xl overflow-hidden">
+            <div className="h-0.5 bg-gradient-to-r from-green-500/0 via-green-400/60 to-green-500/0" />
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-green-500/10">
+              <span className="text-sm font-bold text-green-300">💰 Top 3 Juros Compostos</span>
+              <span className="text-[10px] text-slate-500">
+                — odds 1.30–1.36 · maior probabilidade · 3 entradas sequenciais
+              </span>
+              <button
+                onClick={() => setShowJurosCompostos(v => !v)}
+                className="ml-auto text-[10px] font-semibold text-slate-400 hover:text-white transition-colors flex items-center gap-1"
+              >
+                {showJurosCompostos ? 'Ocultar ▲' : 'Exibir ▼'}
+              </button>
+            </div>
+
+            {showJurosCompostos && (
+              <div className="p-4 space-y-3">
+                {/* Simulação de retorno composto */}
+                <div className="flex items-center gap-2 flex-wrap bg-green-500/5 border border-green-500/15 rounded-xl px-4 py-3">
+                  <div className="flex items-center gap-1 text-xs">
+                    <span className="text-slate-500 text-[10px]">Início</span>
+                    <span className="font-bold text-white font-mono">R$ {STAKE_INICIAL.toFixed(2)}</span>
+                  </div>
+                  {etapas.map((e, i) => (
+                    <React.Fragment key={i}>
+                      <span className="text-green-500/60 text-sm">→</span>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[9px] text-slate-600">entrada {i + 1} @{topJurosCompostos[i].odd.toFixed(2)}</span>
+                        <span className={`font-bold font-mono text-xs ${i === etapas.length - 1 ? 'text-green-300' : 'text-white'}`}>
+                          R$ {e.retorno.toFixed(2)}
+                        </span>
+                      </div>
+                    </React.Fragment>
+                  ))}
+                  <div className="ml-auto flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-[9px] text-slate-500">Lucro potencial</div>
+                      <div className="text-sm font-bold text-green-300 font-mono">+R$ {lucroTotal.toFixed(2)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] text-slate-500">Prob. combinada</div>
+                      <div className={`text-sm font-bold font-mono ${probCombinada >= 0.5 ? 'text-green-300' : 'text-amber-300'}`}>
+                        {(probCombinada * 100).toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cards dos 3 jogos */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {topJurosCompostos.map(({ game, best, odd }, i) => {
+                    const isActive = highlightedGameId === game.id;
+                    const entrada = etapas[i];
+                    const labels = ['1ª Entrada', '2ª Entrada', '3ª Entrada'];
+                    return (
+                      <button
+                        key={game.id}
+                        onClick={() => navigateToGame(game.id)}
+                        className={`text-left p-3 rounded-xl border transition-all group ${
+                          isActive
+                            ? 'bg-green-500/15 border-green-500/50 shadow-[0_0_16px_rgba(34,197,94,0.2)]'
+                            : 'bg-background-dark border-border-subtle hover:border-green-500/30 hover:bg-green-500/5'
+                        }`}
+                      >
+                        {/* Header: ordem + retorno da entrada */}
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold text-green-400 bg-green-500/10 border border-green-500/20 px-2 py-0.5 rounded-full">
+                            {labels[i]}
+                          </span>
+                          <div className="text-right">
+                            <div className="text-[9px] text-slate-600 font-mono">
+                              R$ {entrada.stake.toFixed(2)} →
+                            </div>
+                            <div className="text-xs font-bold text-green-300 font-mono">
+                              R$ {entrada.retorno.toFixed(2)}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Times */}
+                        <p className="text-xs font-bold text-white truncate leading-tight">
+                          {game.home_team} <span className="text-slate-500 font-normal">v</span> {game.away_team}
+                        </p>
+                        <p className="text-[10px] text-slate-500 truncate mb-2">{game.country} — {game.league}</p>
+
+                        {/* Mercado + odd + prob */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-slate-500 font-mono">{game.match_time}</span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-300 border border-green-500/25">
+                            {best.short}
+                          </span>
+                          <span className="text-[9px] font-mono font-bold text-white">@{odd.toFixed(2)}</span>
+                        </div>
+
+                        {/* Prob + EV */}
+                        <div className="mt-2 flex items-center gap-2">
+                          <div className="flex-1 bg-background-dark rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className="h-full bg-green-400/60 rounded-full"
+                              style={{ width: `${Math.min(100, best.prob * 100)}%` }}
+                            />
+                          </div>
+                          <span className="text-[9px] font-bold text-green-300 font-mono">
+                            {(best.prob * 100).toFixed(1)}%
+                          </span>
+                        </div>
+
+                        {/* xG */}
+                        <div className="mt-1.5 flex items-center gap-1 text-[9px] text-slate-600 font-mono">
+                          <span>xG</span>
+                          <span className="text-slate-400">{best.xg_home.toFixed(2)}</span>
+                          <span>—</span>
+                          <span className="text-slate-400">{best.xg_away.toFixed(2)}</span>
+                        </div>
+
+                        <div className={`mt-1.5 text-[9px] font-medium transition-colors ${
+                          isActive ? 'text-green-400' : 'text-slate-600 group-hover:text-green-400'
+                        }`}>
+                          {isActive ? '→ localizado na lista' : 'clique para localizar'}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ─── Top 5 do Dia ──────────────────────────────────────────────────────── */}
       {top3.length > 0 && (
